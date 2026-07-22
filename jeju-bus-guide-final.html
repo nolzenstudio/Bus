@@ -151,18 +151,27 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
 .range-banner .rb-title svg{width:16px;height:16px;flex:none;color:var(--route-trunk);}
 
 /* route picker (지나는 버스) */
-.route-list{ display:flex; flex-direction:column; gap:8px; }
+.route-list{ display:flex; flex-direction:column; }
 .route-card{
-  display:flex; align-items:center; gap:11px; padding:12px;
+  display:flex; align-items:center; gap:11px; padding:12px; margin-bottom:8px;
   background:var(--basalt-700); border:1px solid rgba(255,255,255,.07);
   border-radius:var(--radius-md); cursor:pointer;
 }
 .route-card:active{transform:scale(.98);}
 .route-card.selected{border-color:var(--tangerine-500); background:linear-gradient(135deg, rgba(255,138,61,.12), rgba(21,155,143,.06));}
+.route-card.selected{margin-bottom:2px;}
+.route-card.selected .chev{transform:rotate(90deg); color:var(--tangerine-500);}
+.route-card .chev{width:16px;height:16px;flex:none;color:#7d8286;transition:transform .18s ease;}
 .route-meta{flex:1;min-width:0;}
 .route-nm{font-size:14.5px;font-weight:800;}
 .route-dir{font-size:12px;color:var(--stone-300);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.route-card .chev{width:16px;height:16px;flex:none;color:#7d8286;}
+
+/* 확장 상세 패널 (선택 노선 아래로 이동) */
+.detail-slot{ /* 빈 상태에서는 공간 차지 안 함 */ }
+#routeDetail{ margin:0 0 10px 6px; padding:2px 0 6px 12px; border-left:2px solid rgba(255,138,61,.35); }
+.detail-block{ margin-top:14px; }
+.detail-block:first-child{ margin-top:6px; }
+.detail-label{ font-size:11px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; color:var(--stone-300); margin-bottom:10px; }
 
 /* destination timeline (도착 정류장) */
 .timeline{ position:relative; max-height:380px; overflow-y:auto; background:var(--basalt-700); border:1px solid rgba(255,255,255,.07); border-radius:var(--radius-md); padding:6px 0; }
@@ -319,17 +328,21 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
     <div id="routeArea"></div>
   </div>
 
-  <div class="section" id="timelineSection" style="margin-top:16px; display:none;">
-    <div class="section-label">도착 정류장 선택</div>
-    <div id="timelineArea"></div>
-  </div>
-
-  <div class="section" style="margin-top:16px;">
-    <div class="section-label">실시간 도착 전광판</div>
-    <div id="boardArea">
-      <div class="empty-state">
-        <div class="big">🚌</div>
-        출발 정류장 → 버스 → 도착 정류장을<br>차례로 선택하면 실시간 도착 정보를 보여드려요
+  <!-- 노선 선택 시 해당 카드 바로 아래로 이동해 펼쳐지는 상세 패널 -->
+  <div id="detailHolder" style="display:none;">
+    <div id="routeDetail">
+      <div class="detail-block">
+        <div class="detail-label">도착 정류장 선택</div>
+        <div id="timelineArea"></div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label">실시간 도착 전광판</div>
+        <div id="boardArea">
+          <div class="empty-state">
+            <div class="big">🚌</div>
+            도착 정류장을 선택하면<br>이 버스의 실시간 도착 정보를 보여드려요
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -494,20 +507,33 @@ function loadingBox(msg){ return `<div class="status-box loading"><span class="s
 function errorBox(msg, detail){ return `<div class="status-box error">${msg}.<br><span style="opacity:.6;font-size:11px;">${detail||''}</span></div>`; }
 
 function stopArrivalTimer(){ if(arrivalTimer){ clearInterval(arrivalTimer); arrivalTimer = null; } }
+
+// 상세 패널(타임라인+전광판)을 선택 노선 아래 슬롯으로 이동 / 보관함으로 회수
+function mountDetail(routeId){
+  const slot = document.querySelector(`.detail-slot[data-slot="${routeId}"]`);
+  const detail = document.getElementById('routeDetail');
+  if(slot && detail){ slot.appendChild(detail); }
+}
+function parkDetail(){
+  const holder = document.getElementById('detailHolder');
+  const detail = document.getElementById('routeDetail');
+  if(holder && detail){ holder.appendChild(detail); }
+}
+
 function resetRoute(){
   selectedRoute = null; routeMap = {};
+  parkDetail();  // 리스트를 다시 그리기 전에 상세 패널을 보관함으로 회수(파괴 방지)
   document.getElementById('routeSection').style.display = 'none';
   document.getElementById('routeArea').innerHTML = '';
 }
 function resetTimeline(){
   selectedDest = null; routeStations = []; departureOrd = null; departureDist = 0;
-  document.getElementById('timelineSection').style.display = 'none';
   document.getElementById('timelineArea').innerHTML = '';
 }
 function resetBoard(){
   document.getElementById('boardArea').innerHTML = `<div class="empty-state">
     <div class="big">🚌</div>
-    출발 정류장 → 버스 → 도착 정류장을<br>차례로 선택하면 실시간 도착 정보를 보여드려요
+    도착 정류장을 선택하면<br>이 버스의 실시간 도착 정보를 보여드려요
   </div>`;
 }
 
@@ -551,7 +577,8 @@ function renderRoutes(routes){
         <div class="route-dir">${r.DST_NM} 방면 · ${r.ORGT_NM} 출발</div>
       </div>
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-    </div>`).join('')}</div>`;
+    </div>
+    <div class="detail-slot" data-slot="${r.ROUTE_ID}"></div>`).join('')}</div>`;
 }
 
 // STEP 2 → 3 : 버스 선택 → 도착 정류장 타임라인
@@ -563,13 +590,12 @@ async function selectRoute(routeId){
     el.classList.toggle('selected', el.dataset.rid == routeId);
   });
   stopArrivalTimer(); resetTimeline(); resetBoard();
+  mountDetail(routeId);   // 선택한 노선 카드 바로 아래로 상세 패널 이동
   await loadTimeline(routeId);
 }
 
 async function loadTimeline(routeId){
-  const sec = document.getElementById('timelineSection');
   const area = document.getElementById('timelineArea');
-  sec.style.display = 'block';
   area.innerHTML = loadingBox('노선이 지나는 정류장을 불러오는 중이에요');
   try{
     const res = await fetch(`${PROXY}/searchBusRouteStationList.do?route_id=${routeId}`);
