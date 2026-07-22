@@ -208,13 +208,17 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
 .trip-od .od-to{ color:var(--ocean-500); }
 
 /* station list */
-.station-list{ display:flex; flex-direction:column; gap:8px; }
+.station-list{ display:flex; flex-direction:column; }
 .station-card{
   background:var(--basalt-700); border:1px solid rgba(255,255,255,.07);
-  border-radius:var(--radius-md); padding:14px; cursor:pointer; transition:border-color .15s;
+  border-radius:var(--radius-md); padding:14px; margin-bottom:8px; cursor:pointer; transition:border-color .15s;
 }
 .station-card:active{transform:scale(.98);}
 .station-card.selected{border-color:var(--tangerine-500); background:linear-gradient(135deg, rgba(255,138,61,.12), rgba(21,155,143,.06));}
+.station-card.selected{margin-bottom:2px;}
+
+/* 정류장 아래로 이동하는 '지나는 버스' 패널 (1단계 확장) */
+#stationDetail{ margin:2px 0 10px 6px; padding:2px 0 4px 12px; border-left:2px solid rgba(21,155,143,.4); }
 .station-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
 .station-name{font-size:15px;font-weight:700;}
 .station-dist{font-size:12px;font-weight:700;color:var(--tangerine-500);white-space:nowrap;}
@@ -324,12 +328,17 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
     </div>
   </div>
 
-  <div class="section" id="routeSection" style="margin-top:16px; display:none;">
-    <div class="section-label">지나는 버스</div>
-    <div id="routeArea"></div>
+  <!-- 정류장 선택 시 그 카드 바로 아래로 이동하는 '지나는 버스' 패널 (1단계 확장) -->
+  <div id="stationDetailHolder" style="display:none;">
+    <div id="stationDetail">
+      <div class="detail-block">
+        <div class="detail-label">지나는 버스</div>
+        <div id="routeArea"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- 노선 선택 시 해당 카드 바로 아래로 이동해 펼쳐지는 상세 패널 -->
+  <!-- 노선 선택 시 해당 카드 바로 아래로 이동해 펼쳐지는 상세 패널 (2단계 확장) -->
   <div id="detailHolder" style="display:none;">
     <div id="routeDetail">
       <div class="detail-block">
@@ -462,6 +471,7 @@ function initLocate(){
 
 function loadNearbyStations(){
   if(!myLoc) return;
+  resetStation();  // 목록 재구성 전에 하위 패널을 보관함으로 회수(파괴 방지)
   const area = document.getElementById('stationArea');
   area.innerHTML = `<div class="status-box loading"><span class="spinner"></span>주변 정류장을 찾는 중이에요</div>`;
 
@@ -499,6 +509,7 @@ function renderStations(stations){
         <div class="station-dist">${formatDist(s.dist)}</div>
       </div>
     </div>
+    <div class="station-slot" data-sslot="${s.id}"></div>
   `).join('')}</div>`;
 }
 
@@ -508,7 +519,19 @@ function errorBox(msg, detail){ return `<div class="status-box error">${msg}.<br
 
 function stopArrivalTimer(){ if(arrivalTimer){ clearInterval(arrivalTimer); arrivalTimer = null; } }
 
-// 상세 패널(타임라인+전광판)을 선택 노선 아래 슬롯으로 이동 / 보관함으로 회수
+// '지나는 버스' 패널을 선택 정류장 아래 슬롯으로 이동 / 보관함으로 회수 (1단계)
+function mountStationDetail(stationId){
+  const slot = document.querySelector(`.station-slot[data-sslot="${stationId}"]`);
+  const el = document.getElementById('stationDetail');
+  if(slot && el){ slot.appendChild(el); }
+}
+function parkStationDetail(){
+  const holder = document.getElementById('stationDetailHolder');
+  const el = document.getElementById('stationDetail');
+  if(holder && el){ holder.appendChild(el); }
+}
+
+// 상세 패널(타임라인+전광판)을 선택 노선 아래 슬롯으로 이동 / 보관함으로 회수 (2단계)
 function mountDetail(routeId){
   const slot = document.querySelector(`.detail-slot[data-slot="${routeId}"]`);
   const detail = document.getElementById('routeDetail');
@@ -523,8 +546,14 @@ function parkDetail(){
 function resetRoute(){
   selectedGroup = null; routeGroups = [];
   parkDetail();  // 리스트를 다시 그리기 전에 상세 패널을 보관함으로 회수(파괴 방지)
-  document.getElementById('routeSection').style.display = 'none';
   document.getElementById('routeArea').innerHTML = '';
+}
+function resetStation(){
+  stopArrivalTimer();
+  resetTimeline(); resetBoard();
+  resetRoute();            // routeDetail 회수 + routeArea 비움
+  parkStationDetail();     // routeArea를 비운 뒤 stationDetail 회수
+  selectedStation = null; selectedStationId = null;
 }
 function resetTimeline(){
   selectedDest = null; groupDests = []; selectedDestRouteIds = null;
@@ -537,21 +566,26 @@ function resetBoard(){
   </div>`;
 }
 
-// STEP 1 → 2 : 출발 정류장 선택 → 지나는 버스 목록
+// STEP 1 → 2 : 출발 정류장 선택 → 지나는 버스 목록 (재클릭 시 축소 토글)
 async function selectStation(id, name){
+  // 이미 펼쳐진 정류장을 다시 클릭하면 접기
+  if(selectedStationId === id){
+    resetStation();
+    document.querySelectorAll('.station-card').forEach(el => el.classList.remove('selected'));
+    return;
+  }
   selectedStationId = id;
   selectedStation = { id, name };
   document.querySelectorAll('.station-card').forEach(el => {
     el.classList.toggle('selected', el.dataset.id == id);
   });
   stopArrivalTimer(); resetRoute(); resetTimeline(); resetBoard();
+  mountStationDetail(id);   // 선택한 정류장 카드 바로 아래로 '지나는 버스' 패널 이동
   await loadRoutes(id);
 }
 
 async function loadRoutes(stationId){
-  const sec = document.getElementById('routeSection');
   const area = document.getElementById('routeArea');
-  sec.style.display = 'block';
   area.innerHTML = loadingBox('이 정류장을 지나는 버스를 불러오는 중이에요');
   try{
     const res = await fetch(`${PROXY}/searchRouteByStationList.do?station_id=${stationId}`);
