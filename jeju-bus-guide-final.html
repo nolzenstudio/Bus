@@ -609,7 +609,8 @@ function renderRoutes(routes){
       map.set(key, { routeNum: r.ROUTE_NUM, dstNm: r.DST_NM, routeIds: [], origins: new Set() });
     }
     const g = map.get(key);
-    g.routeIds.push(r.ROUTE_ID);
+    // API가 같은 계통(ROUTE_ID)을 중복 행으로 반환 → 계통 수·배지가 부풀지 않게 중복 제거
+    if(!g.routeIds.includes(r.ROUTE_ID)) g.routeIds.push(r.ROUTE_ID);
     g.origins.add(r.ORGT_NM);
   });
   // 번호 오름차순 정렬
