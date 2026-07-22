@@ -150,6 +150,53 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
 }
 .range-banner .rb-title svg{width:16px;height:16px;flex:none;color:var(--route-trunk);}
 
+/* route picker (지나는 버스) */
+.route-list{ display:flex; flex-direction:column; gap:8px; }
+.route-card{
+  display:flex; align-items:center; gap:11px; padding:12px;
+  background:var(--basalt-700); border:1px solid rgba(255,255,255,.07);
+  border-radius:var(--radius-md); cursor:pointer;
+}
+.route-card:active{transform:scale(.98);}
+.route-card.selected{border-color:var(--tangerine-500); background:linear-gradient(135deg, rgba(255,138,61,.12), rgba(21,155,143,.06));}
+.route-meta{flex:1;min-width:0;}
+.route-nm{font-size:14.5px;font-weight:800;}
+.route-dir{font-size:12px;color:var(--stone-300);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.route-card .chev{width:16px;height:16px;flex:none;color:#7d8286;}
+
+/* destination timeline (도착 정류장) */
+.timeline{ position:relative; max-height:380px; overflow-y:auto; background:var(--basalt-700); border:1px solid rgba(255,255,255,.07); border-radius:var(--radius-md); padding:6px 0; }
+.tl-item{ display:flex; gap:11px; padding:0 14px; align-items:stretch; }
+.tl-rail{ position:relative; width:14px; flex:none; display:flex; justify-content:center; }
+.tl-rail::before{ content:''; position:absolute; top:0; bottom:0; width:2px; background:var(--basalt-600); }
+.tl-item:first-child .tl-rail::before{ top:50%; }
+.tl-item:last-child .tl-rail::before{ bottom:50%; }
+.tl-dot{ width:11px;height:11px;border-radius:50%; margin-top:15px; z-index:1; background:var(--basalt-600); border:2px solid var(--basalt-600); flex:none; }
+.tl-body{ flex:1; min-width:0; padding:11px 0; border-bottom:1px solid rgba(255,255,255,.04); display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.tl-item:last-child .tl-body{border-bottom:none;}
+.tl-name{ font-size:13.5px; font-weight:600; color:var(--stone-100); overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.tl-sub{ font-size:11.5px; font-weight:700; white-space:nowrap; }
+.tl-item.past .tl-name{ color:#6d7175; font-weight:500; }
+.tl-item.past .tl-sub{ color:#5c6165; }
+.tl-item.dep .tl-dot{ background:var(--tangerine-500); border-color:var(--tangerine-500); box-shadow:0 0 8px rgba(255,138,61,.6); }
+.tl-item.dep .tl-name{ color:var(--tangerine-500); font-weight:800; }
+.tl-item.dep .tl-sub{ color:var(--tangerine-500); }
+.tl-item.future{ cursor:pointer; }
+.tl-item.future .tl-dot{ background:var(--basalt-700); border-color:var(--ocean-500); }
+.tl-item.future .tl-sub{ color:var(--ocean-500); }
+.tl-item.future:active .tl-body{ opacity:.7; }
+.tl-item.future.picked .tl-dot{ background:var(--ocean-500); border-color:var(--ocean-500); box-shadow:0 0 8px rgba(21,155,143,.6); }
+.tl-item.future.picked .tl-name{ color:var(--ocean-500); font-weight:800; }
+
+/* trip summary (전광판 상단 출발→도착 요약) */
+.trip-summary{ padding:12px 14px; border-radius:var(--radius-md); margin-bottom:10px; background:linear-gradient(135deg, rgba(255,138,61,.12), rgba(21,155,143,.08)); border:1px solid rgba(255,138,61,.28); }
+.trip-route{ font-size:11.5px; color:var(--stone-300); display:flex; align-items:center; gap:7px; margin-bottom:8px; }
+.trip-route .route-tag{ background:var(--tangerine-500); }
+.trip-od{ display:flex; align-items:center; gap:9px; font-size:14px; font-weight:800; color:var(--stone-100); }
+.trip-od .od-arrow{ width:16px;height:16px;flex:none;color:var(--tangerine-500); }
+.trip-od .od-from, .trip-od .od-to{ overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.trip-od .od-to{ color:var(--ocean-500); }
+
 /* station list */
 .station-list{ display:flex; flex-direction:column; gap:8px; }
 .station-card{
@@ -267,12 +314,22 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
     </div>
   </div>
 
+  <div class="section" id="routeSection" style="margin-top:16px; display:none;">
+    <div class="section-label">지나는 버스</div>
+    <div id="routeArea"></div>
+  </div>
+
+  <div class="section" id="timelineSection" style="margin-top:16px; display:none;">
+    <div class="section-label">도착 정류장 선택</div>
+    <div id="timelineArea"></div>
+  </div>
+
   <div class="section" style="margin-top:16px;">
     <div class="section-label">실시간 도착 전광판</div>
     <div id="boardArea">
       <div class="empty-state">
         <div class="big">🚌</div>
-        정류장을 선택하면<br>실시간 도착 정보를 보여드려요
+        출발 정류장 → 버스 → 도착 정류장을<br>차례로 선택하면 실시간 도착 정보를 보여드려요
       </div>
     </div>
   </div>
@@ -293,6 +350,13 @@ const STATIONS = [[406001167,"(구)구판장",126.798051,33.329675],[406001168,"
 let myLoc = null;
 let selectedStationId = null;
 let arrivalTimer = null;
+let selectedStation = null;   // 출발 정류장 {id, name}
+let routeMap = {};            // ROUTE_ID -> 노선 객체
+let selectedRoute = null;     // 선택한 버스(방향 포함) 객체
+let routeStations = [];       // 선택 노선의 경유 정류장(순서대로)
+let departureOrd = null;      // 출발 정류장의 STATION_ORD
+let departureDist = 0;        // 출발 정류장의 누적거리(ROUTE_DIST)
+let selectedDest = null;      // 도착 정류장 {id, name, ord, dist}
 
 function haversine(lat1, lng1, lat2, lng2){
   const R = 6371000;
@@ -425,49 +489,197 @@ function renderStations(stations){
   `).join('')}</div>`;
 }
 
-function selectStation(id, name){
+// 공통 UI 헬퍼
+function loadingBox(msg){ return `<div class="status-box loading"><span class="spinner"></span>${msg}</div>`; }
+function errorBox(msg, detail){ return `<div class="status-box error">${msg}.<br><span style="opacity:.6;font-size:11px;">${detail||''}</span></div>`; }
+
+function stopArrivalTimer(){ if(arrivalTimer){ clearInterval(arrivalTimer); arrivalTimer = null; } }
+function resetRoute(){
+  selectedRoute = null; routeMap = {};
+  document.getElementById('routeSection').style.display = 'none';
+  document.getElementById('routeArea').innerHTML = '';
+}
+function resetTimeline(){
+  selectedDest = null; routeStations = []; departureOrd = null; departureDist = 0;
+  document.getElementById('timelineSection').style.display = 'none';
+  document.getElementById('timelineArea').innerHTML = '';
+}
+function resetBoard(){
+  document.getElementById('boardArea').innerHTML = `<div class="empty-state">
+    <div class="big">🚌</div>
+    출발 정류장 → 버스 → 도착 정류장을<br>차례로 선택하면 실시간 도착 정보를 보여드려요
+  </div>`;
+}
+
+// STEP 1 → 2 : 출발 정류장 선택 → 지나는 버스 목록
+async function selectStation(id, name){
   selectedStationId = id;
+  selectedStation = { id, name };
   document.querySelectorAll('.station-card').forEach(el => {
     el.classList.toggle('selected', el.dataset.id == id);
   });
-  loadArrivals(id, name);
-
-  if(arrivalTimer) clearInterval(arrivalTimer);
-  arrivalTimer = setInterval(() => loadArrivals(id, name, true), 20000);
+  stopArrivalTimer(); resetRoute(); resetTimeline(); resetBoard();
+  await loadRoutes(id);
 }
 
-async function loadArrivals(stationId, stationName, silent){
+async function loadRoutes(stationId){
+  const sec = document.getElementById('routeSection');
+  const area = document.getElementById('routeArea');
+  sec.style.display = 'block';
+  area.innerHTML = loadingBox('이 정류장을 지나는 버스를 불러오는 중이에요');
+  try{
+    const res = await fetch(`${PROXY}/searchRouteByStationList.do?station_id=${stationId}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const routes = await res.json();
+    renderRoutes(routes);
+  }catch(err){ area.innerHTML = errorBox('버스 목록을 불러오지 못했어요', err.message); }
+}
+
+function renderRoutes(routes){
+  const area = document.getElementById('routeArea');
+  if(!routes || routes.length === 0){
+    area.innerHTML = `<div class="status-box">이 정류장을 지나는 노선 정보를 찾지 못했어요.</div>`;
+    return;
+  }
+  routeMap = {};
+  routes.forEach(r => { routeMap[r.ROUTE_ID] = r; });
+  area.innerHTML = `<div class="route-list">${routes.map(r => `
+    <div class="route-card" data-rid="${r.ROUTE_ID}" onclick="selectRoute(${r.ROUTE_ID})">
+      <div class="route-tag">${r.ROUTE_NUM}</div>
+      <div class="route-meta">
+        <div class="route-nm">${r.ROUTE_NM || r.ROUTE_NUM}</div>
+        <div class="route-dir">${r.DST_NM} 방면 · ${r.ORGT_NM} 출발</div>
+      </div>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+    </div>`).join('')}</div>`;
+}
+
+// STEP 2 → 3 : 버스 선택 → 도착 정류장 타임라인
+async function selectRoute(routeId){
+  const r = routeMap[routeId];
+  if(!r) return;
+  selectedRoute = r;
+  document.querySelectorAll('.route-card').forEach(el => {
+    el.classList.toggle('selected', el.dataset.rid == routeId);
+  });
+  stopArrivalTimer(); resetTimeline(); resetBoard();
+  await loadTimeline(routeId);
+}
+
+async function loadTimeline(routeId){
+  const sec = document.getElementById('timelineSection');
+  const area = document.getElementById('timelineArea');
+  sec.style.display = 'block';
+  area.innerHTML = loadingBox('노선이 지나는 정류장을 불러오는 중이에요');
+  try{
+    const res = await fetch(`${PROXY}/searchBusRouteStationList.do?route_id=${routeId}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const list = await res.json();
+    list.sort((a, b) => a.STATION_ORD - b.STATION_ORD);
+    routeStations = list;
+    const dep = list.find(s => s.STATION_ID == selectedStationId);
+    departureOrd = dep ? dep.STATION_ORD : null;
+    departureDist = dep ? dep.ROUTE_DIST : 0;
+    renderTimeline();
+  }catch(err){ area.innerHTML = errorBox('정류장 목록을 불러오지 못했어요', err.message); }
+}
+
+function renderTimeline(){
+  const area = document.getElementById('timelineArea');
+  if(!routeStations.length){
+    area.innerHTML = `<div class="status-box">노선 정류장 정보를 찾지 못했어요.</div>`;
+    return;
+  }
+  area.innerHTML = `<div class="timeline">${routeStations.map(s => {
+    let cls, sub;
+    if(departureOrd == null){                 // 출발지를 못 찾은 예외 상황
+      cls = 'future'; sub = '';
+    }else if(s.STATION_ORD < departureOrd){    // 출발지 이전 → 탑승 불가
+      cls = 'past'; sub = '지나감';
+    }else if(s.STATION_ORD === departureOrd){  // 출발지
+      cls = 'dep'; sub = '출발';
+    }else{                                     // 출발지 이후 → 선택 가능
+      cls = 'future'; sub = formatDist(s.ROUTE_DIST - departureDist);
+    }
+    const clickable = cls === 'future';
+    return `
+    <div class="tl-item ${cls}" data-sid="${s.STATION_ID}" ${clickable ? `onclick="selectDest(${s.STATION_ID})"` : ''}>
+      <div class="tl-rail"><span class="tl-dot"></span></div>
+      <div class="tl-body">
+        <div class="tl-name">${s.STATION_NM}</div>
+        <div class="tl-sub">${sub}</div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+
+  // 출발 정류장이 화면에 보이도록 스크롤 이동
+  const tl = area.querySelector('.timeline');
+  const depEl = area.querySelector('.tl-item.dep');
+  if(tl && depEl){ tl.scrollTop = Math.max(0, depEl.offsetTop - 40); }
+}
+
+// STEP 3 → 4 : 도착 정류장 선택 → 실시간 전광판
+function selectDest(stationId){
+  const s = routeStations.find(x => x.STATION_ID == stationId);
+  if(!s || departureOrd == null || s.STATION_ORD <= departureOrd) return;
+  selectedDest = { id: s.STATION_ID, name: s.STATION_NM, ord: s.STATION_ORD, dist: s.ROUTE_DIST - departureDist };
+  document.querySelectorAll('.tl-item').forEach(el => {
+    el.classList.toggle('picked', el.dataset.sid == stationId);
+  });
+  loadArrivals(false);
+  stopArrivalTimer();
+  arrivalTimer = setInterval(() => loadArrivals(true), 20000);
+}
+
+async function loadArrivals(silent){
+  if(!selectedStation || !selectedRoute) return;
   const boardArea = document.getElementById('boardArea');
   if(!silent){
-    boardArea.innerHTML = `<div class="status-box loading"><span class="spinner"></span>${stationName} 도착 정보를 불러오는 중이에요</div>`;
+    boardArea.innerHTML = loadingBox(`${selectedStation.name} 실시간 도착 정보를 불러오는 중이에요`);
   }
   try{
-    const res = await fetch(`${PROXY}/searchArrivalInfoList.do?station_id=${stationId}`);
+    const res = await fetch(`${PROXY}/searchArrivalInfoList.do?station_id=${selectedStation.id}`);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const arrivals = await res.json();
-    renderBoard(stationName, arrivals);
+    const all = await res.json();
+    // 선택한 버스(방향 포함 ROUTE_ID)만 필터 — 같은 번호라도 반대 방향은 제외
+    const filtered = (all || []).filter(b => b.ROUTE_ID == selectedRoute.ROUTE_ID);
+    renderBoard(filtered);
   }catch(err){
-    boardArea.innerHTML = `<div class="status-box error">도착 정보를 불러오지 못했어요.<br><span style="opacity:.6;font-size:11px;">${err.message}</span></div>`;
+    boardArea.innerHTML = errorBox('도착 정보를 불러오지 못했어요', err.message);
   }
 }
 
-function renderBoard(stationName, arrivals){
+function tripSummaryHTML(){
+  const distText = selectedDest ? ` · ${formatDist(selectedDest.dist)} 이동` : '';
+  return `<div class="trip-summary">
+    <div class="trip-route">
+      <span class="route-tag">${selectedRoute.ROUTE_NUM}</span>${selectedRoute.ROUTE_NM || ''}${distText}
+    </div>
+    <div class="trip-od">
+      <span class="od-from">${selectedStation.name}</span>
+      <svg class="od-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      <span class="od-to">${selectedDest ? selectedDest.name : '-'}</span>
+    </div>
+  </div>`;
+}
+
+function renderBoard(arrivals){
   const boardArea = document.getElementById('boardArea');
+  const summary = tripSummaryHTML();
   if(!arrivals || arrivals.length === 0){
-    boardArea.innerHTML = `<div class="empty-state">
+    boardArea.innerHTML = summary + `<div class="empty-state" style="padding:24px;">
       <div class="big">🕐</div>
-      <b style="color:var(--stone-300)">${stationName}</b><br>
-      지금은 접근 중인 버스가 없어요<br>잠시 후 다시 확인해보세요
+      지금은 <b style="color:var(--stone-300)">${selectedRoute.ROUTE_NUM}번</b>(${selectedRoute.DST_NM} 방면)<br>접근 중인 버스가 없어요<br>20초마다 자동으로 다시 확인해요
     </div>`;
     return;
   }
 
   const sorted = [...arrivals].sort((a,b) => a.PREDICT_TRAV_TM - b.PREDICT_TRAV_TM);
 
-  boardArea.innerHTML = `
+  boardArea.innerHTML = summary + `
     <div class="board">
       <div class="board-strip">
-        <div class="live"><span class="blink"></span>${stationName}</div>
+        <div class="live"><span class="blink"></span>${selectedStation.name}</div>
         <div class="updated">방금 갱신</div>
       </div>
       ${sorted.map(b => {
