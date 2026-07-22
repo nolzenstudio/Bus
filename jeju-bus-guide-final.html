@@ -137,6 +137,19 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
 .geo-retry:active{transform:scale(.98);}
 .geo-note{margin-top:9px; font-size:11.5px; color:var(--stone-300); opacity:.8;}
 
+/* out-of-range (제주 밖) banner */
+.range-banner{
+  padding:12px 14px; border-radius:var(--radius-md); margin-bottom:10px;
+  background:rgba(47,111,237,.12); border:1px solid rgba(47,111,237,.32);
+  font-size:12.5px; color:var(--stone-300); line-height:1.6;
+}
+.range-banner b{color:var(--stone-100); font-weight:600;}
+.range-banner .rb-title{
+  display:flex; align-items:center; gap:6px; color:var(--stone-100);
+  font-weight:700; font-size:13px; margin-bottom:4px;
+}
+.range-banner .rb-title svg{width:16px;height:16px;flex:none;color:var(--route-trunk);}
+
 /* station list */
 .station-list{ display:flex; flex-direction:column; gap:8px; }
 .station-card{
@@ -384,13 +397,25 @@ function loadNearbyStations(){
   renderStations(nearby);
 }
 
+const OUT_OF_RANGE_M = 40000; // 40km — 가장 가까운 정류장이 이보다 멀면 제주도 밖으로 간주
+
 function renderStations(stations){
   const area = document.getElementById('stationArea');
   if(stations.length === 0){
     area.innerHTML = `<div class="status-box">주변 정류장을 찾지 못했어요.</div>`;
     return;
   }
-  area.innerHTML = `<div class="station-list">${stations.map(s => `
+  let banner = '';
+  if(stations[0].dist > OUT_OF_RANGE_M){
+    banner = `<div class="range-banner">
+      <div class="rb-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/></svg>
+        현재 위치가 제주도 밖이에요
+      </div>
+      가장 가까운 제주 정류장도 약 <b>${formatDist(stations[0].dist)}</b> 떨어져 있어요. 제주 여행 중이라면 도착 후 이용해 주세요. 아래는 <b>참고용</b>으로 제주에서 가장 가까운 정류장입니다.
+    </div>`;
+  }
+  area.innerHTML = banner + `<div class="station-list">${stations.map(s => `
     <div class="station-card" data-id="${s.id}" onclick="selectStation(${s.id}, '${s.name.replace(/'/g,"")}')">
       <div class="station-top">
         <div class="station-name">${s.name}</div>
