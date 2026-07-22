@@ -103,6 +103,40 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
 .status-box.loading{color:var(--tangerine-500);}
 .status-box.error{color:var(--route-express); border-color:rgba(230,73,60,.3);}
 
+/* geolocation permission guide */
+.geo-guide{
+  margin:12px 20px 0; padding:16px; border-radius:var(--radius-md);
+  background:var(--basalt-700); border:1px solid rgba(255,138,61,.32);
+  font-size:13px; color:var(--stone-300); line-height:1.65; display:none;
+}
+.geo-guide.show{display:block;}
+.geo-guide h3{
+  margin:0 0 8px; font-size:13.5px; color:var(--stone-100); font-weight:700;
+  display:flex; align-items:center; gap:7px;
+}
+.geo-guide h3 .warn{width:18px;height:18px;flex:none;color:var(--tangerine-500);}
+.geo-guide ol{margin:6px 0 0; padding-left:18px;}
+.geo-guide li{margin:3px 0;}
+.geo-guide b{color:var(--stone-100);font-weight:600;}
+.geo-os{display:flex; gap:6px; margin:10px 0 6px;}
+.geo-os button{
+  flex:1; font-size:12px; font-weight:700; padding:7px; cursor:pointer;
+  border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,.12);
+  background:var(--basalt-600); color:var(--stone-300);
+}
+.geo-os button.active{
+  background:rgba(255,138,61,.16); border-color:rgba(255,138,61,.5); color:var(--tangerine-500);
+}
+.geo-steps{display:none;}
+.geo-steps.active{display:block;}
+.geo-retry{
+  margin-top:12px; width:100%; font-size:13px; font-weight:700; color:#fff;
+  background:var(--tangerine-500); border:none; border-radius:var(--radius-sm);
+  padding:10px; cursor:pointer;
+}
+.geo-retry:active{transform:scale(.98);}
+.geo-note{margin-top:9px; font-size:11.5px; color:var(--stone-300); opacity:.8;}
+
 /* station list */
 .station-list{ display:flex; flex-direction:column; gap:8px; }
 .station-card{
@@ -175,6 +209,34 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
       </div>
       <button class="gps-btn" id="gpsBtn" onclick="startLocate()">내 위치 찾기</button>
     </div>
+  </div>
+
+  <div class="geo-guide" id="geoGuide">
+    <h3>
+      <svg class="warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      위치 권한이 꺼져 있어요
+    </h3>
+    현재 <b>기본 위치(제주시청)</b> 기준으로 정류장을 보여드리고 있어요. 내 주변 정류장을 보려면 아래 방법으로 위치 권한을 켜주세요.
+    <div class="geo-os">
+      <button id="osIos" onclick="showGeoOS('ios')">아이폰(Safari)</button>
+      <button id="osAnd" onclick="showGeoOS('and')">안드로이드(Chrome)</button>
+    </div>
+    <div class="geo-steps" id="stepsIos">
+      <ol>
+        <li>설정 → <b>개인정보 보호 및 보안 → 위치 서비스</b> 켜기</li>
+        <li>아래로 스크롤 → <b>Safari 웹사이트</b> → "앱을 사용하는 동안"</li>
+        <li>이 페이지로 돌아와 <b>새로고침</b> 후 아래 "다시 시도"</li>
+      </ol>
+    </div>
+    <div class="geo-steps" id="stepsAnd">
+      <ol>
+        <li>주소창 왼쪽 <b>자물쇠 🔒 아이콘</b> → 권한 → <b>위치 → 허용</b></li>
+        <li>안 보이면 Chrome <b>⋮ → 설정 → 사이트 설정 → 위치</b>에서 허용</li>
+        <li>폰의 <b>위치(GPS)</b>도 켜져 있어야 해요 → 아래 "다시 시도"</li>
+      </ol>
+    </div>
+    <button class="geo-retry" onclick="startLocate()">다시 시도</button>
+    <div class="geo-note">주소가 <b>https://</b> 로 시작하는지 확인하세요. http로 접속하면 위치 권한이 아예 뜨지 않습니다.</div>
   </div>
 
   <div class="section">
@@ -250,17 +312,62 @@ function startLocate(){
     pos => {
       myLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: '현재 위치' };
       txt.textContent = '현재 위치 확인됨';
+      btn.textContent = '내 위치 찾기';
       btn.disabled = false;
+      hideGeoGuide();
       loadNearbyStations();
     },
     err => {
       myLoc = DEFAULT_LOC;
-      txt.textContent = DEFAULT_LOC.label + ' (위치 권한 거부됨)';
       btn.disabled = false;
+      if(err.code === 1){ // PERMISSION_DENIED — 브라우저가 다시 묻지 않으므로 안내 표시
+        txt.textContent = DEFAULT_LOC.label + ' · 위치 권한 꺼짐';
+        btn.textContent = '위치 권한 안내';
+        showGeoGuide();
+      } else { // POSITION_UNAVAILABLE / TIMEOUT — 재시도 유도
+        txt.textContent = DEFAULT_LOC.label + ' · 위치 확인 실패';
+        btn.textContent = '다시 시도';
+        hideGeoGuide();
+      }
       loadNearbyStations();
     },
     { timeout: 8000 }
   );
+}
+
+// 위치 안내 UI 제어
+function showGeoGuide(){ document.getElementById('geoGuide').classList.add('show'); }
+function hideGeoGuide(){ document.getElementById('geoGuide').classList.remove('show'); }
+function showGeoOS(os){
+  document.getElementById('osIos').classList.toggle('active', os === 'ios');
+  document.getElementById('osAnd').classList.toggle('active', os === 'and');
+  document.getElementById('stepsIos').classList.toggle('active', os === 'ios');
+  document.getElementById('stepsAnd').classList.toggle('active', os === 'and');
+}
+function autoDetectOS(){
+  const ua = navigator.userAgent || '';
+  const isIos = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document);
+  showGeoOS(isIos ? 'ios' : 'and');
+}
+
+// 시작 시 권한 상태를 먼저 확인 — 이미 거부 상태면 프롬프트 없이 안내부터 표시
+function initLocate(){
+  autoDetectOS();
+  if(navigator.permissions && navigator.permissions.query){
+    navigator.permissions.query({ name: 'geolocation' }).then(res => {
+      if(res.state === 'denied'){
+        myLoc = DEFAULT_LOC;
+        document.getElementById('myLocText').textContent = DEFAULT_LOC.label + ' · 위치 권한 꺼짐';
+        document.getElementById('gpsBtn').textContent = '위치 권한 안내';
+        showGeoGuide();
+        loadNearbyStations();
+      } else {
+        startLocate();
+      }
+    }).catch(() => startLocate());
+  } else {
+    startLocate();
+  }
 }
 
 function loadNearbyStations(){
@@ -361,7 +468,7 @@ function renderBoard(stationName, arrivals){
 }
 
 // 자동 시작
-startLocate();
+initLocate();
 </script>
 </body>
 </html>
