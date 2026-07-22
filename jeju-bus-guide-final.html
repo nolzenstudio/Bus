@@ -634,10 +634,18 @@ function renderRoutes(routes){
   }).join('')}</div>`;
 }
 
-// STEP 2 → 3 : 노선 그룹 선택 → (모든 계통 병합) 도착 정류장 목록
+// STEP 2 → 3 : 노선 그룹 선택 → (모든 계통 병합) 도착 정류장 목록 (재클릭 시 축소 토글)
 async function selectGroup(idx){
   const g = routeGroups[idx];
   if(!g) return;
+  // 이미 펼쳐진 노선을 다시 클릭하면 접기
+  if(selectedGroup === g){
+    stopArrivalTimer(); resetTimeline(); resetBoard();
+    parkDetail();
+    selectedGroup = null;
+    document.querySelectorAll('.route-card').forEach(el => el.classList.remove('selected'));
+    return;
+  }
   selectedGroup = g;
   document.querySelectorAll('.route-card').forEach(el => {
     el.classList.toggle('selected', el.dataset.gidx == idx);
