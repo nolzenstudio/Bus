@@ -1120,31 +1120,50 @@ async function annotateDirections(list){
 
   await Promise.all(groups.map(async g => {
     const rows = await Promise.all(g.map(s => fetchStationRoutes(s.id)));
+
+    // 버스가 여기서 다음에 서는 곳 — 도로 어느 쪽인지 가장 알기 쉬운 단서.
+    // 대표 계통 하나만 본다(같은 승차장의 계통들은 대개 다음 정류장이 같다).
+    const nexts = await Promise.all(g.map(async (s, i) => {
+      const rid = rows[i][0] && rows[i][0].ROUTE_ID;
+      if(!rid) return null;
+      const l = await getRouteStations(rid);
+      if(!l || !l.length) return null;
+      const ord = [...l].sort((a, b) => a.STATION_ORD - b.STATION_ORD);
+      const at = ord.findIndex(x => x.STATION_ID == s.id);
+      return (at >= 0 && ord[at + 1]) ? shortDirName(ord[at + 1].STATION_NM) : null;
+    }));
+    // 양쪽 다음 정류장이 같으면 구분에 쓸 수 없다
+    const useNext = nexts.every(Boolean) && new Set(nexts).size === nexts.length;
+
     const info = rows.map(rs => ({
       nums: new Set(rs.map(r => String(r.ROUTE_NUM || '').trim()).filter(Boolean)),
       dsts: new Set(rs.map(r => String(r.DST_NM || '').replace(/\(종점\)/g, '').trim()).filter(Boolean))
     }));
-    // 반대편 승차장에는 없는 것만 남긴다 — 공통 항목은 구분에 도움이 안 된다.
-    // 노선번호가 갈리면 그게 가장 확실하고(예: 434쪽 / 435쪽), 겹치면 방면으로 구분한다.
+    // 노선번호·종점은 반대편에 없는 것만 남긴다 — 공통 항목은 구분에 도움이 안 된다
     g.forEach((s, i) => {
       const others = info.filter((_, j) => j !== i);
       const only = (key, v) => !others.some(o => o[key].has(v));
-      const nums = [...info[i].nums].filter(v => only('nums', v))
-        .sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
       const dsts = [...info[i].dsts].filter(v => only('dsts', v));
-      s.dirs = nums.length ? { kind: 'num', items: nums.slice(0, 3) }
-             : { kind: 'dst', items: (dsts.length ? dsts : [...info[i].dsts]).slice(0, 2) };
+      s.dirs = {
+        next: useNext ? nexts[i] : null,
+        nums: [...info[i].nums].filter(v => only('nums', v))
+          .sort((a, b) => a.localeCompare(b, 'ko', { numeric: true })),
+        dsts: (dsts.length ? dsts : [...info[i].dsts])
+      };
     });
   }));
   return true;
 }
 
-// 방면/노선 라벨 문자열 — 조회 전이거나 이름이 겹치지 않으면 빈 칸
-function dirLabel(s){
-  if(!s || !s.dirs || !s.dirs.items.length) return '';
-  return s.dirs.kind === 'num'
-    ? `${s.dirs.items.join(', ')} 타는 곳`
-    : `${s.dirs.items.join(', ')} 방면`;
+// 방면/노선 라벨 — 조회 전이거나 이름이 겹치지 않으면 빈 칸.
+// short=true면 좁은 칩에 쓰도록 방면만.
+function dirLabel(s, short){
+  if(!s || !s.dirs) return '';
+  const d = s.dirs;
+  const nums = (d.nums || []).slice(0, 3);
+  if(d.next) return (short || !nums.length) ? `${d.next} 방면` : `${d.next} 방면 · ${nums.join(', ')}`;
+  if(nums.length) return `${nums.join(', ')} 타는 곳`;
+  return (d.dsts && d.dsts.length) ? `${d.dsts.slice(0, 2).join(', ')} 방면` : '';
 }
 
 // ── 순환 노선 방면 이름 ──────────────────────────
@@ -1560,7 +1579,7 @@ function renderDirectTab(){
   }
   const chips = `<div class="pick-label">출발 정류장</div>
     <div class="dep-chips">${nearbyList.map(n => `
-      <button class="dep-chip ${filter.dep.id === n.id ? 'on' : ''}" onclick="pickDep(${n.id})">${n.name} · ${formatDist(n.dist)}${dirLabel(n) ? ` · ${dirLabel(n)}` : ''}</button>
+      <button class="dep-chip ${filter.dep.id === n.id ? 'on' : ''}" onclick="pickDep(${n.id})">${n.name} · ${formatDist(n.dist)}${dirLabel(n, true) ? ` · ${dirLabel(n, true)}` : ''}</button>
     `).join('')}</div>`;
 
   if(filter.direct === null) return chips + loadingBox('가는 버스를 찾는 중이에요');
