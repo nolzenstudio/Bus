@@ -268,6 +268,110 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
   border-radius:50%; display:inline-block; animation:spin .7s linear infinite; vertical-align:middle; margin-right:6px;
 }
 @keyframes spin{to{transform:rotate(360deg);}}
+
+/* ── 목적지 필터 (바텀시트 팝업) ─────────────────── */
+.dest-btn{
+  position:relative; z-index:1; width:100%; margin-top:12px;
+  display:flex; align-items:center; gap:9px;
+  padding:12px 14px; border-radius:var(--radius-md); cursor:pointer;
+  background:linear-gradient(135deg, rgba(255,138,61,.16), rgba(21,155,143,.1));
+  border:1px solid rgba(255,138,61,.35); color:var(--stone-100);
+  font-family:inherit; font-size:13.5px; font-weight:700; text-align:left;
+}
+.dest-btn:active{transform:scale(.99);}
+.dest-btn svg{width:16px;height:16px;flex:none;color:var(--tangerine-500);}
+.dest-btn .dest-sub{margin-left:auto; font-size:11.5px; font-weight:600; color:var(--stone-300);}
+
+.sheet-dim{
+  position:fixed; inset:0; z-index:50; display:none;
+  background:rgba(0,0,0,.6); backdrop-filter:blur(2px);
+  align-items:flex-end; justify-content:center;
+}
+.sheet-dim.show{display:flex;}
+.sheet{
+  width:100%; max-width:430px; max-height:88vh; display:flex; flex-direction:column;
+  background:var(--basalt-800); border:1px solid rgba(255,255,255,.08); border-bottom:none;
+  border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+  animation:sheetUp .22s ease;
+}
+@keyframes sheetUp{from{transform:translateY(24px);opacity:.4;}to{transform:none;opacity:1;}}
+.sheet-grip{width:38px;height:4px;border-radius:2px;background:var(--basalt-600);margin:9px auto 0;}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;padding:12px 18px 10px;}
+.sheet-title{font-size:17px;font-weight:800;}
+.sheet-close{
+  background:none;border:none;color:var(--stone-300);font-size:20px;line-height:1;
+  padding:4px 6px;cursor:pointer;font-family:inherit;
+}
+.sheet-body{padding:0 18px 22px; overflow-y:auto;}
+
+.search-row{display:flex;gap:7px;margin-bottom:12px;}
+.search-row input{
+  flex:1; min-width:0; padding:11px 13px; border-radius:var(--radius-md);
+  background:var(--basalt-700); border:1px solid rgba(255,255,255,.1);
+  color:var(--stone-100); font-family:inherit; font-size:14px;
+}
+.search-row input::placeholder{color:#6d7175;}
+.search-row input:focus{outline:none;border-color:var(--tangerine-500);}
+.search-row button{
+  flex:none; padding:0 16px; border-radius:var(--radius-md); cursor:pointer;
+  background:var(--tangerine-500); border:none; color:#1a1204;
+  font-family:inherit; font-size:13.5px; font-weight:800;
+}
+.search-row button:active{transform:scale(.97);}
+
+.pick-crumb{
+  display:flex; align-items:center; gap:8px; margin-bottom:12px; padding:9px 12px;
+  background:var(--basalt-700); border:1px solid rgba(255,255,255,.07);
+  border-radius:var(--radius-md); font-size:12.5px; color:var(--stone-300);
+}
+.pick-crumb b{color:var(--stone-100);font-weight:700;}
+.pick-crumb .crumb-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pick-crumb button{
+  flex:none; background:none; border:1px solid rgba(255,255,255,.14); color:var(--stone-300);
+  border-radius:var(--radius-sm); padding:4px 9px; font-family:inherit; font-size:11.5px; cursor:pointer;
+}
+
+.pick-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--stone-300);margin:14px 0 8px;}
+.pick-list{display:flex;flex-direction:column;gap:6px;}
+.pick-item{
+  display:flex; align-items:center; gap:10px; padding:12px 13px; cursor:pointer;
+  background:var(--basalt-700); border:1px solid rgba(255,255,255,.07); border-radius:var(--radius-md);
+}
+.pick-item:active{transform:scale(.99);}
+.pick-item.picked{border-color:var(--ocean-500); background:linear-gradient(135deg, rgba(21,155,143,.14), transparent);}
+.pick-main{flex:1;min-width:0;}
+.pick-nm{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pick-sub{font-size:11.5px;color:var(--stone-300);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pick-dist{font-size:12px;font-weight:700;color:var(--tangerine-500);white-space:nowrap;}
+
+.dep-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:4px;}
+.dep-chip{
+  flex:none; padding:7px 11px; border-radius:999px; cursor:pointer;
+  background:var(--basalt-700); border:1px solid rgba(255,255,255,.1);
+  color:var(--stone-300); font-family:inherit; font-size:12px; font-weight:600; white-space:nowrap;
+}
+.dep-chip.on{background:var(--tangerine-500);border-color:var(--tangerine-500);color:#1a1204;font-weight:800;}
+
+.tabs{display:flex;gap:6px;margin:14px 0 10px;}
+.tabs button{
+  flex:1; padding:9px 0; border-radius:var(--radius-md); cursor:pointer;
+  background:var(--basalt-700); border:1px solid rgba(255,255,255,.08);
+  color:var(--stone-300); font-family:inherit; font-size:12.5px; font-weight:700;
+}
+.tabs button.on{background:var(--basalt-600);border-color:var(--tangerine-500);color:var(--stone-100);}
+
+.plan-item{
+  display:flex; align-items:center; gap:10px; padding:12px 13px;
+  background:var(--basalt-700); border:1px solid rgba(255,255,255,.07); border-radius:var(--radius-md);
+}
+.plan-item.go{cursor:pointer;border-color:rgba(255,138,61,.3);}
+.plan-item.go:active{transform:scale(.99);}
+.plan-item .chev{width:16px;height:16px;flex:none;color:#7d8286;}
+.plan-badge{
+  display:inline-block; margin-left:6px; padding:1px 6px; border-radius:6px;
+  font-size:10px; font-weight:700; color:#1a1204; background:var(--tangerine-500); vertical-align:middle;
+}
+.sheet-note{margin-top:10px;font-size:11.5px;line-height:1.6;color:var(--stone-300);opacity:.85;}
 </style>
 </head>
 <body>
@@ -283,6 +387,11 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
       </div>
       <button class="gps-btn" id="gpsBtn" onclick="startLocate()">내 위치 찾기</button>
     </div>
+    <button class="dest-btn" onclick="openFilter()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <span id="destBtnText">목적지 입력해서 버스 찾기</span>
+      <span class="dest-sub">검색</span>
+    </button>
   </div>
 
   <div class="geo-guide" id="geoGuide">
@@ -363,6 +472,25 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
 
 </div>
 
+<!-- 목적지 필터 팝업 (검색 → 정류장 후보 → 노선) -->
+<div class="sheet-dim" id="filterDim" onclick="closeFilter(event)">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">어디로 가세요?</div>
+      <button class="sheet-close" onclick="closeFilter()" aria-label="닫기">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="search-row">
+        <input id="filterQuery" type="search" placeholder="장소·정류장 이름 (예: 성산일출봉)"
+               autocomplete="off" onkeydown="if(event.key==='Enter') runPlaceSearch()">
+        <button onclick="runPlaceSearch()">검색</button>
+      </div>
+      <div id="filterStep"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 const PROXY = 'https://jeju-bus-proxy.nolzenstudio.workers.dev';
 const DEFAULT_LOC = { lat: 33.4996, lng: 126.5312, label: '제주시청 (기본값)' };
@@ -374,6 +502,7 @@ const STATIONS = [[406001167,"(구)구판장",126.798051,33.329675],[406001168,"
 
 let myLoc = null;
 let outOfJeju = false;           // 실제 위치가 제주 밖이라 공항 기본 위치로 대체했는지
+let nearbyList = [];             // 현재 화면에 뿌린 가까운 정류장 8곳
 let selectedStationId = null;
 let arrivalTimer = null;
 let selectedStation = null;      // 출발 정류장 {id, name}
@@ -513,6 +642,7 @@ function loadNearbyStations(){
     dist: haversine(myLoc.lat, myLoc.lng, lat, lng)
   })).sort((a,b) => a.dist - b.dist).slice(0, 8);
 
+  nearbyList = nearby;   // 목적지 필터에서 출발 정류장 후보로 재사용
   renderStations(nearby);
 }
 
@@ -837,6 +967,452 @@ function renderBoard(arrivals){
       }).join('')}
     </div>
   `;
+}
+
+/* ══════════════════════════════════════════════════════════
+   목적지 필터 — 장소 검색 → 도착 정류장 지정 → 노선 목록
+   ══════════════════════════════════════════════════════════ */
+
+const PLACE_RADIUS_M = 900;   // 검색한 장소 주변 이 거리 안의 정류장을 후보로
+const PLACE_CAND_MAX = 6;     // 장소 주변 정류장 후보 최대 개수
+
+// 필터 팝업 상태
+const filter = {
+  step: 'idle',      // idle | places | stations | routes
+  places: [],        // 장소 검색 결과 [{name, addr, lat, lng, fromStation}]
+  place: null,       // 선택한 장소
+  cands: [],         // 그 장소 주변 정류장 후보
+  dest: null,        // 지정한 도착 정류장 {id, name, dist}
+  alts: null,        // 직통이 없을 때 찾은 대안 도착 정류장 [{dest, groups}]
+  dep: null,         // 출발 정류장 {id, name, dist}
+  tab: 'direct',     // direct | all
+  direct: null,      // 직통 노선 그룹 배열 (null이면 로딩 전)
+  all: null,         // 도착 정류장을 지나는 전체 노선 그룹 배열
+  kakaoDown: false   // 카카오 검색 실패(프록시 미설정 등) 여부
+};
+
+// 계통 경유정류장 캐시 — 같은 ROUTE_ID를 반복 조회하지 않도록
+const routeStationCache = new Map();
+async function getRouteStations(routeId){
+  if(routeStationCache.has(routeId)) return routeStationCache.get(routeId);
+  const p = fetch(`${PROXY}/searchBusRouteStationList.do?route_id=${routeId}`)
+    .then(r => r.ok ? r.json() : [])
+    .catch(() => []);
+  routeStationCache.set(routeId, p);
+  return p;
+}
+
+// 정류장 통과 노선 캐시 — 후보 정류장을 여러 번 비교하므로 재조회를 막는다
+const stationRouteCache = new Map();
+function fetchStationRoutes(stationId){
+  if(stationRouteCache.has(stationId)) return stationRouteCache.get(stationId);
+  const p = fetch(`${PROXY}/searchRouteByStationList.do?station_id=${stationId}`)
+    .then(r => r.ok ? r.json() : [])
+    .catch(() => []);
+  stationRouteCache.set(stationId, p);
+  return p;
+}
+
+// ── 팝업 열기/닫기 ────────────────────────────────
+function openFilter(){
+  document.getElementById('filterDim').classList.add('show');
+  document.body.style.overflow = 'hidden';
+  if(filter.step === 'idle') renderFilterStep();
+  setTimeout(() => document.getElementById('filterQuery').focus(), 60);
+}
+function closeFilter(ev){
+  if(ev && ev.target !== ev.currentTarget) return;   // 시트 내부 클릭은 무시
+  document.getElementById('filterDim').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+// ── 1단계: 장소 검색 ──────────────────────────────
+// 내장 정류소 이름 부분일치 (항상 동작, 오프라인)
+function searchStationsByName(q){
+  const key = q.replace(/\s+/g, '').toLowerCase();
+  if(!key) return [];
+  return STATIONS
+    .filter(([, name]) => name.replace(/\s+/g, '').toLowerCase().includes(key))
+    .map(([id, name, lng, lat]) => ({ id, name: name.trim(), lat, lng }));
+}
+
+// 제주 영역 경계 — 카카오 검색 결과에서 도외 장소를 걸러낸다
+const JEJU_BOUNDS = { minLat: 32.95, maxLat: 33.65, minLng: 125.95, maxLng: 127.05 };
+function inJejuBounds(lat, lng){
+  return lat >= JEJU_BOUNDS.minLat && lat <= JEJU_BOUNDS.maxLat
+      && lng >= JEJU_BOUNDS.minLng && lng <= JEJU_BOUNDS.maxLng;
+}
+
+// 카카오 검색 (Workers 프록시 경유 — 키는 프록시에 보관)
+// kind: 'keyword'(상호·명소) | 'address'(주소·행정동) — 둘의 응답 구조가 다르다
+async function kakaoSearch(kind, q){
+  const res = await fetch(`${PROXY}/kakao/${kind}?query=${encodeURIComponent(q)}`);
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const docs = data.documents || [];
+  const mapped = kind === 'keyword'
+    ? docs.map(d => ({
+        name: d.place_name,
+        addr: d.road_address_name || d.address_name || '',
+        lat: parseFloat(d.y), lng: parseFloat(d.x)
+      }))
+    : docs.map(d => ({
+        name: (d.road_address && d.road_address.building_name) || d.address_name,
+        addr: d.address_name || '',
+        lat: parseFloat(d.y), lng: parseFloat(d.x)
+      }));
+  return mapped.filter(p => p.name && isFinite(p.lat) && isFinite(p.lng) && inJejuBounds(p.lat, p.lng));
+}
+
+// 상호 검색과 주소 검색을 함께 던진다 — 한쪽이 실패해도 나머지로 진행
+async function searchKakaoPlaces(q){
+  const [kw, addr] = await Promise.allSettled([
+    kakaoSearch('keyword', q),
+    kakaoSearch('address', q)
+  ]);
+  if(kw.status === 'rejected' && addr.status === 'rejected') throw kw.reason;
+  const merged = [...(kw.value || []), ...(addr.value || [])];
+  // 같은 이름·같은 좌표(약 10m 이내)는 한 번만
+  const seen = new Set();
+  return merged.filter(p => {
+    const key = `${p.name}|${p.lat.toFixed(4)}|${p.lng.toFixed(4)}`;
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function runPlaceSearch(){
+  const q = document.getElementById('filterQuery').value.trim();
+  if(!q) return;
+  filter.step = 'places'; filter.place = null; filter.dest = null;
+  filter.places = null;   // 로딩 표시
+  renderFilterStep();
+
+  // 정류장 이름 매칭은 즉시, 카카오 장소 검색은 실패해도 진행
+  const byName = searchStationsByName(q).slice(0, 8).map(s => ({
+    name: s.name, addr: '정류장', lat: s.lat, lng: s.lng, fromStation: s.id
+  }));
+  let byPlace = [];
+  try{
+    byPlace = await searchKakaoPlaces(q);
+    filter.kakaoDown = false;
+  }catch(err){
+    filter.kakaoDown = true;
+  }
+
+  // 정류장 이름 매칭을 먼저, 그다음 장소 검색 결과 (중복 좌표는 제외)
+  const seen = new Set(byName.map(p => p.name));
+  filter.places = [...byName, ...byPlace.filter(p => !seen.has(p.name))];
+  renderFilterStep();
+}
+
+// ── 2단계: 장소 주변 정류장 후보 ───────────────────
+function pickPlace(idx){
+  const p = filter.places[idx];
+  if(!p) return;
+  filter.place = p;
+  filter.dest = null;
+
+  const near = STATIONS.map(([id, name, lng, lat]) => ({
+    id, name: name.trim(), lat, lng, dist: haversine(p.lat, p.lng, lat, lng)
+  })).sort((a, b) => a.dist - b.dist);
+
+  // 반경 안의 정류장, 하나도 없으면 가장 가까운 3곳이라도 보여준다
+  const inRadius = near.filter(s => s.dist <= PLACE_RADIUS_M).slice(0, PLACE_CAND_MAX);
+  filter.cands = inRadius.length ? inRadius : near.slice(0, 3);
+  filter.step = 'stations';
+  renderFilterStep();
+}
+
+// ── 3단계: 도착 정류장 지정 → 노선 조회 ────────────
+function pickDest(stationId){
+  const s = filter.cands.find(c => c.id == stationId);
+  if(!s) return;
+  filter.dest = { id: s.id, name: s.name, dist: s.dist };
+  filter.direct = null; filter.all = null; filter.alts = null;   // 도착지가 바뀌면 이전 조회 결과 폐기
+  // 출발 정류장 기본값: 화면에서 이미 선택한 정류장, 없으면 내 위치에서 가장 가까운 곳
+  const cur = selectedStation && nearbyList.find(n => n.id == selectedStation.id);
+  filter.dep = cur || nearbyList[0] || null;
+  filter.step = 'routes';
+  filter.tab = 'direct';
+  return loadFilterRoutes();
+}
+
+function pickDep(stationId){
+  const s = nearbyList.find(n => n.id == stationId);
+  if(!s || (filter.dep && filter.dep.id === s.id)) return;
+  filter.dep = s;
+  filter.direct = null; filter.alts = null;
+  return loadFilterRoutes();
+}
+
+function switchFilterTab(tab){
+  filter.tab = tab;
+  return loadFilterRoutes();
+}
+
+// 노선 목록을 번호+방면으로 묶기 (메인 화면 그룹화 규칙과 동일)
+function groupRoutes(rows){
+  const map = new Map();
+  rows.forEach(r => {
+    const key = r.ROUTE_NUM + '|' + r.DST_NM;
+    if(!map.has(key)) map.set(key, { routeNum: r.ROUTE_NUM, dstNm: r.DST_NM, routeIds: [], origins: new Set(), stops: null, dist: null });
+    const g = map.get(key);
+    if(!g.routeIds.includes(r.ROUTE_ID)) g.routeIds.push(r.ROUTE_ID);
+    g.origins.add(r.ORGT_NM);
+    if(r._stops != null && (g.stops == null || r._stops < g.stops)){ g.stops = r._stops; g.dist = r._dist; }
+  });
+  return [...map.values()].sort((a, b) =>
+    String(a.routeNum).localeCompare(String(b.routeNum), 'ko', { numeric: true }));
+}
+
+async function loadFilterRoutes(){
+  renderFilterStep();   // 로딩 상태 먼저
+  try{
+    if(filter.tab === 'direct'){
+      if(filter.direct) return renderFilterStep();
+      filter.direct = await findDirectRoutes();
+      // 직통이 없으면 같은 장소 주변의 다른 정류장까지 확인
+      if(!filter.direct.length && filter.alts === null){
+        renderFilterStep();
+        filter.alts = await findAlternatives();
+      }
+    }else{
+      if(filter.all) return renderFilterStep();
+      filter.all = groupRoutes(await fetchStationRoutes(filter.dest.id));
+    }
+  }catch(err){
+    if(filter.tab === 'direct') filter.direct = []; else filter.all = [];
+  }
+  renderFilterStep();
+}
+
+// 출발 정류장 → 도착 정류장으로 실제로 이어지는(같은 방향) 계통만 남긴다
+async function findDirectRoutes(){
+  if(!filter.dep || !filter.dest) return [];
+  return findDirectBetween(filter.dep.id, filter.dest.id);
+}
+
+async function findDirectBetween(depId, destId){
+  const [depRows, destRows] = await Promise.all([
+    fetchStationRoutes(depId),
+    fetchStationRoutes(destId)
+  ]);
+  const destIds = new Set(destRows.map(r => r.ROUTE_ID));
+  // 양쪽 정류장을 모두 지나는 계통만 경유정류장을 조회 (보통 몇 개 안 됨)
+  const cands = [];
+  const seen = new Set();
+  depRows.forEach(r => {
+    if(destIds.has(r.ROUTE_ID) && !seen.has(r.ROUTE_ID)){ seen.add(r.ROUTE_ID); cands.push(r); }
+  });
+
+  const checked = await Promise.all(cands.map(async r => {
+    const list = await getRouteStations(r.ROUTE_ID);
+    const a = list.find(s => s.STATION_ID == depId);
+    const b = list.find(s => s.STATION_ID == destId);
+    if(!a || !b) return null;
+    const ordA = Number(a.STATION_ORD), ordB = Number(b.STATION_ORD);
+    if(!(ordB > ordA)) return null;   // 반대 방향 계통 제외
+    return { ...r, _stops: ordB - ordA, _dist: Number(b.ROUTE_DIST) - Number(a.ROUTE_DIST) };
+  }));
+  return groupRoutes(checked.filter(Boolean));
+}
+
+// 고른 조합으로 직통이 없을 때 — 주변의 다른 출발/도착 정류장 조합을 확인한다
+// 제주는 방면별로 승차장이 갈라진 곳이 많다(예: 성산행은 '제주국제공항1(표선,성산,남원)'에서 탑승).
+async function findAlternatives(){
+  const deps = [filter.dep, ...nearbyList.filter(n => n.id !== filter.dep.id)];
+  const pairs = [];
+  deps.forEach(dp => filter.cands.forEach(ds => {
+    if(dp.id === filter.dep.id && ds.id === filter.dest.id) return;   // 이미 조회한 조합
+    pairs.push({ dep: dp, dest: ds });
+  }));
+
+  const found = await Promise.all(pairs.map(async p => ({
+    ...p, groups: await findDirectBetween(p.dep.id, p.dest.id)
+  })));
+
+  // 출발 정류장이 가까운 순 → 도착 정류장이 목적지에 가까운 순
+  return found.filter(r => r.groups.length)
+    .sort((a, b) => (a.dep.dist - b.dep.dist) || (a.dest.dist - b.dest.dist))
+    .slice(0, 5);
+}
+
+// 대안 조합(출발·도착)을 그대로 적용해 다시 조회
+function useAlt(depId, destId){
+  const dp = nearbyList.find(n => n.id == depId);
+  const ds = filter.cands.find(c => c.id == destId);
+  if(!dp || !ds) return;
+  filter.dep = dp;
+  filter.dest = { id: ds.id, name: ds.name, dist: ds.dist };
+  filter.direct = null; filter.all = null; filter.alts = null;
+  return loadFilterRoutes();
+}
+
+// ── 선택한 노선을 메인 화면 흐름에 반영 ─────────────
+async function applyPlan(routeNum, dstNm){
+  const dep = filter.dep, dest = filter.dest;
+  if(!dep || !dest) return;
+  closeFilter();
+
+  // 출발 정류장 펼치기 (이미 펼쳐져 있으면 그대로 둔다 — selectStation은 재클릭 시 접힘)
+  if(selectedStationId !== dep.id) await selectStation(dep.id, dep.name);
+
+  const idx = routeGroups.findIndex(g => String(g.routeNum) === String(routeNum) && String(g.dstNm) === String(dstNm));
+  if(idx < 0) return;
+  if(selectedGroup !== routeGroups[idx]) await selectGroup(idx);
+
+  // 도착지 선택 → 실시간 전광판 (경유정류장 병합 목록에 있어야 함)
+  if(groupDests.some(d => d.id == dest.id)) selectGroupDest(dest.id);
+
+  const card = document.querySelector(`.station-card[data-id="${dep.id}"]`);
+  if(card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('destBtnText').textContent = `${dest.name} 가는 버스`;
+}
+
+// ── 렌더링 ────────────────────────────────────────
+function renderFilterStep(){
+  const box = document.getElementById('filterStep');
+  if(filter.step === 'idle'){
+    box.innerHTML = `<div class="sheet-note">가려는 장소나 정류장 이름을 검색하면, 그 주변 정류장을 골라 <b>거기까지 가는 버스</b>를 찾아드려요.</div>`;
+    return;
+  }
+  if(filter.step === 'places'){ box.innerHTML = renderPlaces(); return; }
+  if(filter.step === 'stations'){ box.innerHTML = renderCands(); return; }
+  box.innerHTML = renderPlanTabs();
+}
+
+function renderPlaces(){
+  if(filter.places === null) return loadingBox('장소를 찾는 중이에요');
+  if(!filter.places.length){
+    return `<div class="status-box"><b>제주 안에서</b> 검색 결과를 찾지 못했어요. 정류장 이름이나 근처 큰 장소로 다시 검색해 보세요.</div>` + kakaoNote();
+  }
+  return `<div class="pick-label">장소 후보</div>
+    <div class="pick-list">${filter.places.map((p, i) => `
+      <div class="pick-item" onclick="pickPlace(${i})">
+        <div class="pick-main">
+          <div class="pick-nm">${p.name}</div>
+          <div class="pick-sub">${p.addr || ''}</div>
+        </div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:#7d8286;"><path d="M9 18l6-6-6-6"/></svg>
+      </div>`).join('')}</div>` + kakaoNote();
+}
+
+function kakaoNote(){
+  return filter.kakaoDown
+    ? `<div class="sheet-note">지금은 <b>정류장 이름</b>으로만 찾고 있어요(장소 검색 연결 안 됨).</div>`
+    : '';
+}
+
+function crumb(text, onBack){
+  return `<div class="pick-crumb">
+    <span class="crumb-txt">${text}</span>
+    <button onclick="${onBack}">변경</button>
+  </div>`;
+}
+
+function renderCands(){
+  const p = filter.place;
+  return crumb(`목적지 <b>${p.name}</b>`, `filter.step='places'; renderFilterStep()`) +
+    `<div class="pick-label">이 근처 정류장</div>
+    <div class="pick-list">${filter.cands.map(s => `
+      <div class="pick-item" onclick="pickDest(${s.id})">
+        <div class="pick-main">
+          <div class="pick-nm">${s.name}</div>
+          <div class="pick-sub">${p.name}에서 ${formatDist(s.dist)}</div>
+        </div>
+        <div class="pick-dist">선택</div>
+      </div>`).join('')}</div>
+    <div class="sheet-note">목적지에서 걸어갈 정류장을 고르면, 그 정류장으로 가는 버스를 찾아요.</div>`;
+}
+
+function renderPlanTabs(){
+  const dest = filter.dest;
+  const head = crumb(`도착 <b>${dest.name}</b>`, `filter.step='stations'; filter.direct=null; filter.all=null; renderFilterStep()`) +
+    `<div class="tabs">
+      <button class="${filter.tab === 'direct' ? 'on' : ''}" onclick="switchFilterTab('direct')">직통 노선</button>
+      <button class="${filter.tab === 'all' ? 'on' : ''}" onclick="switchFilterTab('all')">이 정류장 전체</button>
+    </div>`;
+  return head + (filter.tab === 'direct' ? renderDirectTab() : renderAllTab());
+}
+
+// 노선 번호 나열 — 같은 번호가 방면별로 나뉜 그룹은 한 번만 표시
+function routeNums(groups){
+  return [...new Set(groups.map(g => g.routeNum))]
+    .sort((a, b) => String(a).localeCompare(String(b), 'ko', { numeric: true }))
+    .join(', ');
+}
+
+// 노선 카드의 onclick 문자열 (따옴표가 섞인 노선명도 안전하게)
+function planCall(g){
+  const esc = v => String(v).replace(/&/g,'&amp;').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  return `applyPlan('${esc(g.routeNum)}', '${esc(g.dstNm)}')`;
+}
+
+function renderDirectTab(){
+  if(!filter.dep){
+    return `<div class="status-box">출발 정류장을 먼저 찾아야 해요. 팝업을 닫고 <b>내 위치 찾기</b>를 눌러주세요.</div>`;
+  }
+  const chips = `<div class="pick-label">출발 정류장</div>
+    <div class="dep-chips">${nearbyList.map(n => `
+      <button class="dep-chip ${filter.dep.id === n.id ? 'on' : ''}" onclick="pickDep(${n.id})">${n.name} · ${formatDist(n.dist)}</button>
+    `).join('')}</div>`;
+
+  if(filter.direct === null) return chips + loadingBox('가는 버스를 찾는 중이에요');
+  if(!filter.direct.length){
+    const none = `<div class="status-box">${filter.dep.name}에서 <b>${filter.dest.name}</b>까지 바로 가는 노선이 없어요.</div>`;
+    if(filter.alts === null) return chips + none + loadingBox('근처 다른 정류장 조합을 확인하는 중이에요');
+    if(!filter.alts.length){
+      return chips + none + `<div class="sheet-note">근처 정류장에서도 바로 가는 노선을 찾지 못했어요. <b>이 정류장 전체</b> 탭에서 어떤 노선이 서는지 확인해 보세요.</div>`;
+    }
+    // 방면별로 승차장이 갈린 경우 — 갈 수 있는 출발·도착 조합을 제안
+    return chips + none + `<div class="pick-label">이렇게 하면 갈 수 있어요</div>
+      <div class="pick-list">${filter.alts.map(a => `
+        <div class="pick-item" onclick="useAlt(${a.dep.id}, ${a.dest.id})">
+          <div class="pick-main">
+            <div class="pick-nm">${a.dep.name} <span style="color:var(--stone-300);font-weight:600;">→</span> ${a.dest.name}</div>
+            <div class="pick-sub">출발 ${formatDist(a.dep.dist)} · 도착 ${formatDist(a.dest.dist)} · ${routeNums(a.groups)}</div>
+          </div>
+          <div class="pick-dist">${a.groups.length}개 노선</div>
+        </div>`).join('')}</div>
+      <div class="sheet-note">제주는 같은 장소라도 <b>가는 방면에 따라 승차장이 나뉘어</b> 있어요(공항이 대표적).</div>`;
+  }
+  return chips + `<div class="pick-label">바로 가는 버스</div>
+    <div class="pick-list">${filter.direct.map(g => `
+      <div class="plan-item go" onclick="${planCall(g)}">
+        <div class="route-tag">${g.routeNum}</div>
+        <div class="pick-main">
+          <div class="pick-nm">${g.dstNm} 방면${g.routeIds.length > 1 ? `<span class="tl-badge">${g.routeIds.length}개 계통</span>` : ''}</div>
+          <div class="pick-sub">${g.stops}개 정류장 · ${formatDist(g.dist)}</div>
+        </div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+      </div>`).join('')}</div>
+    <div class="sheet-note">노선을 누르면 팝업이 닫히고 <b>실시간 도착 정보</b>까지 바로 보여드려요.</div>`;
+}
+
+function renderAllTab(){
+  if(filter.all === null) return loadingBox('이 정류장을 지나는 버스를 불러오는 중이에요');
+  if(!filter.all.length) return `<div class="status-box">이 정류장을 지나는 노선 정보를 찾지 못했어요.</div>`;
+  // 직통 탭을 이미 조회했다면 어떤 노선이 내 출발지에서 바로 가는지 배지로 표시
+  const directKeys = new Set((filter.direct || []).map(g => g.routeNum + '|' + g.dstNm));
+  return `<div class="pick-label">${filter.dest.name} 경유 노선</div>
+    <div class="pick-list">${filter.all.map(g => {
+      const isDirect = directKeys.has(g.routeNum + '|' + g.dstNm);
+      const attrs = isDirect
+        ? `class="plan-item go" onclick="${planCall(g)}"`
+        : `class="plan-item"`;
+      return `
+      <div ${attrs}>
+        <div class="route-tag">${g.routeNum}</div>
+        <div class="pick-main">
+          <div class="pick-nm">${g.dstNm} 방면${isDirect ? '<span class="plan-badge">직통</span>' : ''}</div>
+          <div class="pick-sub">${[...g.origins].join(', ')} 출발 · ${g.routeIds.length}개 계통</div>
+        </div>
+        ${isDirect ? '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>' : ''}
+      </div>`;
+    }).join('')}</div>
+    <div class="sheet-note">출발지와 상관없이 이 정류장에 서는 노선 전체예요. <b>직통</b> 배지가 붙은 노선만 지금 출발 정류장에서 바로 갈 수 있어요.</div>`;
 }
 
 // 자동 시작
