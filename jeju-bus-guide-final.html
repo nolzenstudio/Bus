@@ -165,6 +165,14 @@ h1.title{ font-size:26px; font-weight:800; margin:0 0 14px; letter-spacing:-.02e
 .route-meta{flex:1;min-width:0;}
 .route-nm{font-size:14.5px;font-weight:800;}
 .route-dir{font-size:12px;color:var(--stone-300);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.route-head{font-size:11.5px;color:var(--stone-300);margin:0 2px 7px;}
+.route-head b{color:var(--tangerine-500);}
+/* 접근 중인 버스가 있는 노선에 붙는 도착 시간 */
+.route-eta{flex:none;text-align:right;line-height:1.25;}
+.route-eta .eta-min{font-size:14px;font-weight:800;color:var(--tangerine-500);white-space:nowrap;}
+.route-eta .eta-sub{font-size:11px;color:var(--stone-300);white-space:nowrap;}
+.route-eta.soon .eta-min{color:#ff6b6b;}
+.route-card.waiting{opacity:.62;}
 
 /* 확장 상세 패널 (선택 노선 아래로 이동) */
 .detail-slot{ /* 빈 상태에서는 공간 차지 안 함 */ }
@@ -507,6 +515,7 @@ let outOfJeju = false;           // 실제 위치가 제주 밖이라 공항 기
 let nearbyList = [];             // 현재 화면에 뿌린 가까운 정류장 8곳
 let selectedStationId = null;
 let arrivalTimer = null;
+let routeEtaTimer = null;        // 노선 목록의 도착 시간 갱신 타이머
 let selectedStation = null;      // 출발 정류장 {id, name}
 let routeGroups = [];            // 번호+방향으로 묶은 노선 그룹 배열
 let selectedGroup = null;        // 선택한 그룹 {routeNum, dstNm, routeIds:[...]}
@@ -723,7 +732,7 @@ function resetRoute(){
   document.getElementById('routeArea').innerHTML = '';
 }
 function resetStation(){
-  stopArrivalTimer();
+  stopArrivalTimer(); stopRouteEtaTimer();
   resetTimeline(); resetBoard();
   resetRoute();            // routeDetail 회수 + routeArea 비움
   parkStationDetail();     // routeArea를 비운 뒤 stationDetail 회수
@@ -762,14 +771,74 @@ async function loadRoutes(stationId){
   const area = document.getElementById('routeArea');
   area.innerHTML = loadingBox('이 정류장을 지나는 버스를 불러오는 중이에요');
   try{
-    const res = await fetch(`${PROXY}/searchRouteByStationList.do?station_id=${stationId}`);
+    // 노선 목록과 실시간 도착을 함께 받아 '먼저 오는 버스'부터 세운다
+    const [res, arrivals] = await Promise.all([
+      fetch(`${PROXY}/searchRouteByStationList.do?station_id=${stationId}`),
+      fetchStationArrivals(stationId)
+    ]);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const routes = await res.json();
-    renderRoutes(routes);
+    renderRoutes(routes, arrivals);
+    startRouteEtaTimer(stationId);
   }catch(err){ area.innerHTML = errorBox('버스 목록을 불러오지 못했어요', err.message); }
 }
 
-function renderRoutes(routes){
+function fetchStationArrivals(stationId){
+  return fetch(`${PROXY}/searchArrivalInfoList.do?station_id=${stationId}`)
+    .then(r => r.ok ? r.json() : [])
+    .catch(() => []);   // 도착정보가 없어도 노선 목록은 보여준다
+}
+
+// 계통 ROUTE_ID → 그 계통으로 접근 중인 버스들(빠른 순)
+function arrivalsByRoute(arrivals){
+  const map = new Map();
+  (arrivals || []).forEach(a => {
+    const rid = a.ROUTE_ID;
+    if(!map.has(rid)) map.set(rid, []);
+    map.get(rid).push(a);
+  });
+  map.forEach(list => list.sort((x, y) => x.PREDICT_TRAV_TM - y.PREDICT_TRAV_TM));
+  return map;
+}
+
+// 그룹(번호+방면)에 속한 계통 중 가장 먼저 도착하는 버스
+function groupEta(g, byRoute){
+  let best = null, count = 0;
+  g.routeIds.forEach(rid => {
+    const list = byRoute.get(rid) || [];
+    count += list.length;
+    if(list.length && (!best || list[0].PREDICT_TRAV_TM < best.PREDICT_TRAV_TM)) best = list[0];
+  });
+  return best ? { min: best.PREDICT_TRAV_TM, remain: best.REMAIN_STATION, at: best.CURR_STATION_NM, count } : null;
+}
+
+function etaHTML(eta){
+  if(!eta) return `<div class="route-eta"><div class="eta-sub">접근 중<br>버스 없음</div></div>`;
+  return `<div class="route-eta${eta.min <= 3 ? ' soon' : ''}">
+    <div class="eta-min">${eta.min}분</div>
+    <div class="eta-sub">${eta.remain}정거장${eta.count > 1 ? ` · ${eta.count}대` : ''}</div>
+  </div>`;
+}
+
+// 20초마다 도착 시간만 제자리 갱신 — 목록을 다시 그리면 펼쳐둔 패널이 날아가므로 순서는 건드리지 않는다
+function stopRouteEtaTimer(){ if(routeEtaTimer){ clearInterval(routeEtaTimer); routeEtaTimer = null; } }
+function startRouteEtaTimer(stationId){
+  stopRouteEtaTimer();
+  routeEtaTimer = setInterval(async () => {
+    if(selectedStationId !== stationId) return stopRouteEtaTimer();
+    const byRoute = arrivalsByRoute(await fetchStationArrivals(stationId));
+    routeGroups.forEach((g, i) => {
+      const card = document.querySelector(`.route-card[data-gidx="${i}"]`);
+      if(!card) return;
+      const eta = groupEta(g, byRoute);
+      const slot = card.querySelector('.route-eta');
+      if(slot) slot.outerHTML = etaHTML(eta);
+      card.classList.toggle('waiting', !eta);
+    });
+  }, 20000);
+}
+
+function renderRoutes(routes, arrivals){
   const area = document.getElementById('routeArea');
   if(!routes || routes.length === 0){
     area.innerHTML = `<div class="status-box">이 정류장을 지나는 노선 정보를 찾지 못했어요.</div>`;
@@ -787,22 +856,35 @@ function renderRoutes(routes){
     if(!g.routeIds.includes(r.ROUTE_ID)) g.routeIds.push(r.ROUTE_ID);
     g.origins.add(r.ORGT_NM);
   });
-  // 번호 오름차순 정렬
-  routeGroups = [...map.values()].sort((a, b) =>
-    String(a.routeNum).localeCompare(String(b.routeNum), 'ko', { numeric: true }));
+  // 접근 중인 버스가 있으면 먼저 오는 순, 없는 노선은 그 뒤에 번호순
+  const byRoute = arrivalsByRoute(arrivals);
+  const byNum = (a, b) => String(a.routeNum).localeCompare(String(b.routeNum), 'ko', { numeric: true });
+  routeGroups = [...map.values()].map(g => ({ ...g, eta: groupEta(g, byRoute) }))
+    .sort((a, b) => {
+      if(a.eta && b.eta) return (a.eta.min - b.eta.min) || byNum(a, b);
+      if(a.eta) return -1;
+      if(b.eta) return 1;
+      return byNum(a, b);
+    });
 
-  area.innerHTML = `<div class="route-list">${routeGroups.map((g, i) => {
+  const running = routeGroups.filter(g => g.eta).length;
+  const head = running
+    ? `<div class="route-head">지금 오는 버스 <b>${running}개 노선</b> · 도착 빠른 순</div>`
+    : `<div class="route-head">지금 접근 중인 버스가 없어요 · 노선 번호순</div>`;
+
+  area.innerHTML = head + `<div class="route-list">${routeGroups.map((g, i) => {
     const n = g.routeIds.length;
     const sub = n > 1
       ? `${g.origins.size > 1 ? g.origins.size + '개 출발지 · ' : ''}${n}개 계통 운행`
       : `${[...g.origins][0]} 출발`;
     return `
-    <div class="route-card" data-gidx="${i}" onclick="selectGroup(${i})">
+    <div class="route-card${g.eta ? '' : ' waiting'}" data-gidx="${i}" onclick="selectGroup(${i})">
       <div class="route-tag">${g.routeNum}</div>
       <div class="route-meta">
         <div class="route-nm">${g.dstNm} 방면</div>
-        <div class="route-dir">${sub}</div>
+        <div class="route-dir">${g.eta ? `${g.eta.at} 통과 · ` : ''}${sub}</div>
       </div>
+      ${etaHTML(g.eta)}
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
     </div>
     <div class="detail-slot" data-slot="${i}"></div>`;
