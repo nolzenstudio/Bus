@@ -1090,7 +1090,13 @@ async function runPlaceSearch(){
   renderFilterStep();
 
   // 정류장 이름 매칭은 즉시, 카카오 장소 검색은 실패해도 진행
-  const byName = searchStationsByName(q).slice(0, 8).map(s => ({
+  // 같은 이름의 상·하행 승차장은 장소 후보로는 하나만 (반경 300m 안이면 사실상 같은 위치)
+  const named = [];
+  searchStationsByName(q).forEach(s => {
+    if(named.some(o => o.name === s.name && haversine(o.lat, o.lng, s.lat, s.lng) <= 300)) return;
+    named.push(s);
+  });
+  const byName = named.slice(0, 8).map(s => ({
     name: s.name, addr: '정류장', lat: s.lat, lng: s.lng, fromStation: s.id
   }));
   let byPlace = [];
@@ -1123,6 +1129,24 @@ function pickPlace(idx){
   filter.cands = inRadius.length ? inRadius : near.slice(0, 3);
   filter.step = 'stations';
   renderFilterStep();
+  annotateCandDirections();   // 이름이 겹치는 후보에 방면을 붙인다 (조회는 뒤이어 채움)
+}
+
+// 후보에 같은 이름 정류장이 둘 이상이면 어느 쪽인지 구분할 수 없다.
+// 그 정류장을 지나는 노선의 방면(DST_NM)을 붙여 구분한다.
+async function annotateCandDirections(){
+  const count = new Map();
+  filter.cands.forEach(s => count.set(s.name, (count.get(s.name) || 0) + 1));
+  const dup = filter.cands.filter(s => count.get(s.name) > 1);
+  if(!dup.length) return;
+
+  const cands = filter.cands;   // 조회 중 후보가 바뀌면 렌더를 건너뛰기 위해 보관
+  await Promise.all(dup.map(async s => {
+    const rows = await fetchStationRoutes(s.id);
+    s.dirs = [...new Set(rows.map(r => String(r.DST_NM || '').replace(/\(종점\)/g, '').trim()))]
+      .filter(Boolean).slice(0, 2);
+  }));
+  if(filter.step === 'stations' && filter.cands === cands) renderFilterStep();
 }
 
 // ── 3단계: 도착 정류장 지정 → 노선 조회 ────────────
@@ -1173,9 +1197,10 @@ async function loadFilterRoutes(){
     if(filter.tab === 'direct'){
       if(filter.direct) return renderFilterStep();
       filter.direct = await findDirectRoutes();
-      // 직통이 없으면 같은 장소 주변의 다른 정류장까지 확인
-      if(!filter.direct.length && filter.alts === null){
-        renderFilterStep();
+      // 직통을 찾았더라도 주변 조합을 함께 확인한다.
+      // 제주는 상·하행 승차장이 몇십 m 옆에 갈라져 있어, 건너편에서 훨씬 적게 타고 가는 경우가 많다.
+      if(filter.alts === null){
+        renderFilterStep();   // 직통 목록을 먼저 보여주고 대안은 뒤이어 채운다
         filter.alts = await findAlternatives();
       }
     }else{
@@ -1221,7 +1246,15 @@ async function findDirectBetween(depId, destId){
 
 // 고른 조합으로 직통이 없을 때 — 주변의 다른 출발/도착 정류장 조합을 확인한다
 // 제주는 방면별로 승차장이 갈라진 곳이 많다(예: 성산행은 '제주국제공항1(표선,성산,남원)'에서 탑승).
+// 조합끼리 비교하기 위한 예상 소요(분) 근사 — 도보 4.5km/h(75m/분) + 정거장당 약 1.5분.
+// 배차·신호를 모르니 화면에 분으로 쓰지는 않고, 순서를 정하는 데만 쓴다.
+function travelScore(stops, walkM){
+  if(stops == null) return Infinity;
+  return stops * 1.5 + (walkM || 0) / 75;
+}
+
 async function findAlternatives(){
+  if(!filter.dep || !filter.dest) return [];
   const deps = [filter.dep, ...nearbyList.filter(n => n.id !== filter.dep.id)];
   const pairs = [];
   deps.forEach(dp => filter.cands.forEach(ds => {
@@ -1229,13 +1262,16 @@ async function findAlternatives(){
     pairs.push({ dep: dp, dest: ds });
   }));
 
-  const found = await Promise.all(pairs.map(async p => ({
-    ...p, groups: await findDirectBetween(p.dep.id, p.dest.id)
-  })));
+  const found = await Promise.all(pairs.map(async p => {
+    const groups = await findDirectBetween(p.dep.id, p.dest.id);
+    const stops = groups.length ? Math.min(...groups.map(g => g.stops)) : null;
+    return { ...p, groups, stops, score: travelScore(stops, p.dep.dist + p.dest.dist) };
+  }));
 
-  // 출발 정류장이 가까운 순 → 도착 정류장이 목적지에 가까운 순
+  // 걷는 시간까지 더한 예상 소요가 짧은 순
+  // (정거장 수만으로 줄세우면 몇백 m 걸어가는 조합이 바로 건너편 승차장을 밀어낸다)
   return found.filter(r => r.groups.length)
-    .sort((a, b) => (a.dep.dist - b.dep.dist) || (a.dest.dist - b.dest.dist))
+    .sort((a, b) => a.score - b.score)
     .slice(0, 5);
 }
 
@@ -1320,7 +1356,7 @@ function renderCands(){
       <div class="pick-item" onclick="pickDest(${s.id})">
         <div class="pick-main">
           <div class="pick-nm">${s.name}</div>
-          <div class="pick-sub">${p.name}에서 ${formatDist(s.dist)}</div>
+          <div class="pick-sub">${p.name}에서 ${formatDist(s.dist)}${s.dirs && s.dirs.length ? ` · ${s.dirs.join(', ')} 방면` : ''}</div>
         </div>
         <div class="pick-dist">선택</div>
       </div>`).join('')}</div>
@@ -1378,7 +1414,25 @@ function renderDirectTab(){
         </div>`).join('')}</div>
       <div class="sheet-note">제주는 같은 장소라도 <b>가는 방면에 따라 승차장이 나뉘어</b> 있어요(공항이 대표적).</div>`;
   }
-  return chips + `<div class="pick-label">바로 가는 버스</div>
+  // 다른 승차장에서 2정거장 이상 덜 타고 가는 조합이 있으면 직통보다 먼저 제안한다
+  const bestStops = Math.min(...filter.direct.map(g => g.stops));
+  const baseScore = travelScore(bestStops, (filter.dep.dist || 0) + (filter.dest.dist || 0));
+  // 2정거장 이상 덜 타면서, 더 걷는 시간까지 더해도 지금 조합보다 빠른 것만
+  const faster = (filter.alts || []).filter(a => bestStops - a.stops >= 2 && a.score <= baseScore);
+  const fasterBox = !faster.length
+    ? (filter.alts === null ? `<div class="sheet-note">근처 다른 승차장도 확인하는 중이에요.</div>` : '')
+    : `<div class="pick-label">더 빠른 경로</div>
+      <div class="pick-list">${faster.map(a => `
+        <div class="pick-item" onclick="useAlt(${a.dep.id}, ${a.dest.id})">
+          <div class="pick-main">
+            <div class="pick-nm">${a.dep.name} <span style="color:var(--stone-300);font-weight:600;">→</span> ${a.dest.name}<span class="plan-badge">${bestStops - a.stops}정거장 덜 타요</span></div>
+            <div class="pick-sub">${a.stops}개 정류장 · 출발 ${formatDist(a.dep.dist)} · 도착 ${formatDist(a.dest.dist)} · ${routeNums(a.groups)}</div>
+          </div>
+          <div class="pick-dist">${a.groups.length}개 노선</div>
+        </div>`).join('')}</div>
+      <div class="sheet-note">제주는 같은 이름이라도 <b>방면에 따라 승차장이 나뉘어</b> 있어요. 누르면 그 조합으로 다시 찾아드려요.</div>`;
+
+  return chips + fasterBox + `<div class="pick-label">바로 가는 버스</div>
     <div class="pick-list">${filter.direct.map(g => `
       <div class="plan-item go" onclick="${planCall(g)}">
         <div class="route-tag">${g.routeNum}</div>
