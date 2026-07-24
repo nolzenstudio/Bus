@@ -515,6 +515,7 @@ let outOfJeju = false;           // 실제 위치가 제주 밖이라 공항 기
 let nearbyList = [];             // 현재 화면에 뿌린 가까운 정류장 8곳
 let selectedStationId = null;
 let arrivalTimer = null;
+let lastArrivalAt = 0;   // 마지막 도착정보 조회 시각 — 화면 복귀가 연달아 일어날 때 중복 조회를 막는다
 let selectedStation = null;      // 출발 정류장 {id, name}
 let routeGroups = [];            // 번호+방향으로 묶은 노선 그룹 배열
 let selectedGroup = null;        // 선택한 그룹 {routeNum, dstNm, routeIds:[...]}
@@ -823,10 +824,29 @@ function etaHTML(eta){
 function stopArrivalTimer(){ if(arrivalTimer){ clearInterval(arrivalTimer); arrivalTimer = null; } }
 function startArrivalTimer(stationId){
   stopArrivalTimer();
+  if(document.hidden) return;   // 가려진 화면에는 걸지 않는다 — 다시 보일 때 아래에서 건다
   arrivalTimer = setInterval(() => refreshArrivals(stationId), 20000);
 }
+
+// 화면이 가려진 동안에는 폴링을 멈춘다 — 보이지도 않는 값 때문에 20초마다 API를 두드릴 이유가 없다.
+// 돌아왔을 때 낡은 도착시간이 그대로 남아 있으면 오히려 위험하므로 즉시 한 번 갱신하고 주기를 다시 건다.
+//
+// 폴링을 멈춘 뒤로는 '복귀 이벤트'가 유일한 재개 경로다. 그게 한 번 누락되면 도착시간이 영영 얼어붙으므로
+// visibilitychange 하나에 걸지 않고 pageshow(뒤로가기 복원 등)도 같은 재개 함수를 부르게 한다.
+function resumeArrivalPolling(){
+  if(document.hidden || selectedStationId == null) return;   // 펼쳐둔 정류장이 없으면 갱신할 대상도 없다
+  // 앱을 빠르게 오갈 때 복귀마다 조회가 나가지 않도록 — 이 조회만 캐시를 안 거쳐 그대로 상류로 간다.
+  if(Date.now() - lastArrivalAt >= 5000) refreshArrivals(selectedStationId);
+  startArrivalTimer(selectedStationId);
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) return stopArrivalTimer();
+  resumeArrivalPolling();
+});
+window.addEventListener('pageshow', resumeArrivalPolling);
 async function refreshArrivals(stationId){
   if(selectedStationId !== stationId) return stopArrivalTimer();
+  lastArrivalAt = Date.now();   // 응답을 기다리지 않고 먼저 찍는다 — 겹쳐 들어오는 복귀도 걸러내야 한다
   const all = await fetchStationArrivals(stationId);
   const byRoute = arrivalsByRoute(all);
   routeGroups.forEach(g => { g.eta = groupEta(g, byRoute); });
