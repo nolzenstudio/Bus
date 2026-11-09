@@ -109,7 +109,11 @@ export default {
 };
 
 const BIS = "https://bus.jeju.go.kr";
-const FORM = { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "Referer": BIS + "/" };
+// 시간표 화면은 User-Agent가 없으면 500을 낸다 — Workers의 fetch는 UA를 안 붙이므로 직접 넣는다
+const BIS_HEADERS = { "Referer": BIS + "/", "User-Agent": "Mozilla/5.0 (compatible; jeju-bus-proxy)" };
+const FORM = { ...BIS_HEADERS, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" };
+// 응답 모양이나 상류 처리 방식이 바뀌면 올린다 — 엣지 캐시에 남은 옛 응답을 버리는 용도
+const CACHE_VER = "2";
 
 async function schedule(url) {
   const op = url.pathname.slice("/schedule/".length);
@@ -139,7 +143,7 @@ async function schedule(url) {
     if (!/^\d{1,6}$/.test(id)) return notFound();
     const [tres, dres] = await Promise.all([
       fetch(`${BIS}/data/schedule/getScheduleTableInfo`, { method: "POST", headers: FORM, body: "scheduleId=" + id }),
-      fetch(`${BIS}/mobile/schedule/detailSchedule?scheduleId=${id}`, { headers: { "Referer": BIS + "/" } })
+      fetch(`${BIS}/mobile/schedule/detailSchedule?scheduleId=${id}`, { headers: BIS_HEADERS })
     ]);
     if (!tres.ok) return json({ error: "upstream" }, 502);
     const cells = await tres.json();
@@ -150,10 +154,13 @@ async function schedule(url) {
     });
     const via = (html.match(/class="rotue-via[^"]*"[^>]*>([\s\S]*?)<\/td>/) || [])[1] || "";
     const since = (html.match(/시행일\s*:\s*([^)<]*)/) || [])[1] || "";
-    return json({
+    const res = json({
       id: Number(id), via: text(via), since: since.trim(),
       rows: rows.filter(Boolean).map(r => Array.from(r, v => v || ""))
     });
+    // 안내문(평일만 운행 등)을 못 받았으면 표는 내려주되 캐시하지 않는다 — 6시간 동안 요일 제한이 빠지지 않게
+    if (!dres.ok || !via) res.headers.set("X-No-Cache", "1");
+    return res;
   }
   return notFound();
 }
@@ -174,11 +181,13 @@ function json(data, status = 200) {
 // 성공 응답만 Cloudflare 엣지 캐시에 담는다
 async function cached(request, ttl, make) {
   const cache = caches.default;
-  const key = new Request(request.url, { method: "GET" });
+  const ku = new URL(request.url);
+  ku.searchParams.set("_v", CACHE_VER);
+  const key = new Request(ku.toString(), { method: "GET" });
   const hit = await cache.match(key);
   if (hit) return hit;
   const res = await make();
-  if (res.status === 200) {
+  if (res.status === 200 && !res.headers.has("X-No-Cache")) {
     const copy = new Response(res.body, res);
     copy.headers.set("Cache-Control", `public, max-age=${ttl}`);
     await cache.put(key, copy.clone());
