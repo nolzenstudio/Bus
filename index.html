@@ -518,10 +518,11 @@ let arrivalTimer = null;
 let lastArrivalAt = 0;   // 마지막 도착정보 조회 시각 — 화면 복귀가 연달아 일어날 때 중복 조회를 막는다
 let selectedStation = null;      // 출발 정류장 {id, name}
 let routeGroups = [];            // 번호+방향으로 묶은 노선 그룹 배열
-let selectedGroup = null;        // 선택한 그룹 {routeNum, dstNm, routeIds:[...]}
+let selectedGroup = null;        // 선택한 그룹 {key, routeNum, dstNm, routeIds:[...], legs:[...]}
 let groupDests = [];             // 그룹 전체 계통을 합친 '도착 가능 정류장' (거리순)
 let selectedDest = null;         // 선택한 도착 정류장 {id, name, dist}
-let selectedDestRouteIds = null; // 그 도착지를 실제로 지나는 계통 ROUTE_ID Set
+let selectedDestLegs = null;     // 그 도착지로 실제로 가는 탑승(legKey) Set
+let stationPasses = new Map();   // 펼친 정류장을 두 번 이상 지나는 계통 ROUTE_ID → {ords, list}
 
 // 프록시 JSON 조회 — 실패해도 화면은 계속 그린다(빈 배열)
 const getJSON = url => fetch(url).then(r => r.ok ? r.json() : []).catch(() => []);
@@ -742,7 +743,7 @@ function resetStation(){
   selectedStation = null; selectedStationId = null;
 }
 function resetTimeline(){
-  selectedDest = null; groupDests = []; selectedDestRouteIds = null;
+  selectedDest = null; groupDests = []; selectedDestLegs = null;
   document.getElementById('timelineArea').innerHTML = '';
 }
 function resetBoard(){
@@ -780,7 +781,10 @@ async function loadRoutes(stationId){
       fetchStationRoutes(stationId),
       fetchStationArrivals(stationId)
     ]);
-    renderRoutes(routes, arrivals);
+    const passes = await loadStationPasses(stationId, routes);
+    if(selectedStationId !== stationId) return;   // 기다리는 사이 다른 정류장을 눌렀다
+    stationPasses = passes;
+    renderRoutes(routes, assignLegs(arrivals, passes));
     startArrivalTimer(stationId);
   }catch(err){ area.innerHTML = errorBox('버스 목록을 불러오지 못했어요', err.message); }
 }
@@ -788,12 +792,95 @@ async function loadRoutes(stationId){
 // 도착정보가 없어도 노선 목록은 보여준다
 const fetchStationArrivals = stationId => getJSON(`${PROXY}/searchArrivalInfoList.do?station_id=${stationId}`);
 
-// 계통 ROUTE_ID → 가장 먼저 도착하는 버스와 대수 (그 이상은 쓰는 곳이 없다)
+// ── 한 정류장을 두 번 지나는 순환 노선 ──────────────
+// 434는 한라도서관에서 나와 시내를 한 바퀴 돌고 돌아오는 길에 연미마을회관을 또 지난다.
+// 첫 통과는 제주시청·인화동 쪽으로, 두 번째 통과는 한라도서관 종점으로 간다 — 번호도 DST_NM도 같아서
+// 계통 단위로 다루면 둘이 섞인다. 그래서 '어느 계통의 몇 번째 통과에 타는가'(leg)를 탑승 단위로 삼는다.
+// legKey: 한 번만 지나면 ROUTE_ID, 여러 번 지나면 ROUTE_ID@그 통과의 STATION_ORD
+const legKey = (rid, ord) => ord == null ? String(rid) : `${rid}@${ord}`;
+
+// 노선 목록 API는 두 번 지나는 계통을 두 줄로 준다 — 겹친 계통만 경유목록을 받아 통과 순번을 찾는다
+async function loadStationPasses(stationId, rows){
+  const cnt = new Map();
+  (rows || []).forEach(r => cnt.set(r.ROUTE_ID, (cnt.get(r.ROUTE_ID) || 0) + 1));
+  const map = new Map();
+  await Promise.all([...cnt].filter(([, n]) => n > 1).map(async ([rid]) => {
+    const list = await getRouteStations(rid);
+    const ords = list.filter(s => s.STATION_ID == stationId).map(s => Number(s.STATION_ORD));
+    if(ords.length > 1) map.set(rid, { ords, list });
+  }));
+  return map;
+}
+
+// 그 통과에서 타면 어디로 가는지 — 다음 통과 전까지(마지막이면 종점까지) 구간의 대표 랜드마크
+function passDirName(list, ord, nextOrd){
+  const ahead = list.filter(s => s.STATION_ORD > ord && (nextOrd == null || s.STATION_ORD < nextOrd));
+  if(!ahead.length) return null;
+  return pickLandmark(ahead.slice(0, LANDMARK_LOOKAHEAD)) || plainName(ahead[ahead.length - 1].STATION_NM);
+}
+
+// 그룹 카드에 붙일 회차 설명 — 한 번만 지나는 노선은 빈 칸
+function passNote(g){
+  if(!g || g.passNo == null) return '';
+  return g.passLeft > 0 ? `${g.passNo}회차 · 다시 돌아와요` : `${g.passNo}회차 · 종점행`;
+}
+
+// 계통 목록 행(정류장 기준)을 탑승 단위로 펼친다 — 두 번 지나는 계통은 통과마다 한 행
+function expandPasses(rows, passes){
+  const out = [], seen = new Set();
+  (rows || []).forEach(r => {
+    if(seen.has(r.ROUTE_ID)) return;
+    seen.add(r.ROUTE_ID);
+    const p = passes.get(r.ROUTE_ID);
+    if(!p) return out.push(r);
+    p.ords.forEach((ord, k) => out.push({ ...r, _ord: ord, _passNo: k + 1, _passLeft: p.ords.length - 1 - k,
+      _dir: passDirName(p.list, ord, p.ords[k + 1]) }));
+  });
+  return out;
+}
+
+// 실시간 도착 한 줄이 몇 번째 통과에 대한 것인지 정해 a._leg에 적는다.
+// 같은 차가 통과마다 한 줄씩(남은 정거장만 다르게) 온다 — 예: 고지교의 434가 4정거장/51정거장 두 줄.
+// 현재 위치 = 그 통과 순번 − 남은 정거장. 그 자리가 현재 정류장과 맞고 직전 통과를 이미 지났어야 한다.
+// 두 바퀴가 겹치는 구간(오라초→연미입구→연미마을)에서는 위치만으로 안 갈리므로,
+// 같은 차의 줄들을 남은 정거장 순으로 세워 '남은 통과들'에 차례로 맞춘다.
+function assignLegs(arrivals, passes){
+  const list = Array.isArray(arrivals) ? arrivals : [];
+  const sameBus = new Map();
+  list.forEach(a => {
+    if(!passes.has(a.ROUTE_ID)) return;
+    const k = `${a.ROUTE_ID}|${a.VH_ID}`;
+    if(!sameBus.has(k)) sameBus.set(k, []);
+    sameBus.get(k).push(a);
+  });
+  list.forEach(a => {
+    const p = passes.get(a.ROUTE_ID);
+    if(!p){ a._leg = legKey(a.ROUTE_ID); return; }
+    const remain = Number(a.REMAIN_STATION);
+    const fits = p.ords.filter((ord, k) => {
+      const pos = ord - remain;
+      if(pos < 1 || (k > 0 && pos < p.ords[k - 1])) return false;
+      const st = p.list.find(s => s.STATION_ORD == pos);
+      return !st || a.CURR_STATION_ID == null || st.STATION_ID == a.CURR_STATION_ID;
+    });
+    let ord = fits[0];
+    if(fits.length !== 1){
+      const rows = (a.VH_ID != null && sameBus.get(`${a.ROUTE_ID}|${a.VH_ID}`)) || [a];
+      const rank = [...rows].sort((x, y) => x.REMAIN_STATION - y.REMAIN_STATION).indexOf(a);
+      const byRank = p.ords[p.ords.length - rows.length + rank];
+      ord = (byRank != null && (!fits.length || fits.includes(byRank))) ? byRank : (fits.length ? fits[0] : p.ords[0]);
+    }
+    a._leg = legKey(a.ROUTE_ID, ord);
+  });
+  return list;
+}
+
+// 탑승(legKey) → 가장 먼저 도착하는 버스와 대수 (그 이상은 쓰는 곳이 없다)
 function arrivalsByRoute(arrivals){
   const map = new Map();
   (arrivals || []).forEach(a => {
-    const cur = map.get(a.ROUTE_ID);
-    if(!cur) map.set(a.ROUTE_ID, { best: a, count: 1 });
+    const cur = map.get(a._leg);
+    if(!cur) map.set(a._leg, { best: a, count: 1 });
     else { cur.count++; if(a.PREDICT_TRAV_TM < cur.best.PREDICT_TRAV_TM) cur.best = a; }
   });
   return map;
@@ -802,8 +889,8 @@ function arrivalsByRoute(arrivals){
 // 그룹(번호+방면)에 속한 계통 중 가장 먼저 도착하는 버스
 function groupEta(g, byRoute){
   let best = null, count = 0;
-  g.routeIds.forEach(rid => {
-    const cur = byRoute.get(rid);
+  g.legs.forEach(leg => {
+    const cur = byRoute.get(leg.key);
     if(!cur) return;
     count += cur.count;
     if(!best || cur.best.PREDICT_TRAV_TM < best.PREDICT_TRAV_TM) best = cur.best;
@@ -847,11 +934,12 @@ window.addEventListener('pageshow', resumeArrivalPolling);
 async function refreshArrivals(stationId){
   if(selectedStationId !== stationId) return stopArrivalTimer();
   lastArrivalAt = Date.now();   // 응답을 기다리지 않고 먼저 찍는다 — 겹쳐 들어오는 복귀도 걸러내야 한다
-  const all = await fetchStationArrivals(stationId);
+  const all = assignLegs(await fetchStationArrivals(stationId), stationPasses);
+  if(selectedStationId !== stationId) return;
   const byRoute = arrivalsByRoute(all);
   routeGroups.forEach(g => { g.eta = groupEta(g, byRoute); });
   paintRouteCards();
-  if(selectedDestRouteIds) renderBoard(all.filter(b => selectedDestRouteIds.has(b.ROUTE_ID)));
+  if(selectedDestLegs) renderBoard(all.filter(b => selectedDestLegs.has(b._leg)));
 }
 
 function renderRoutes(routes, arrivals){
@@ -862,7 +950,7 @@ function renderRoutes(routes, arrivals){
   }
   // 접근 중인 버스가 있으면 먼저 오는 순, 없는 노선은 그 뒤에 번호순
   const byRoute = arrivalsByRoute(arrivals);
-  routeGroups = groupRoutes(routes).map(g => ({ ...g, eta: groupEta(g, byRoute) }))
+  routeGroups = groupRoutes(expandPasses(routes, stationPasses)).map(g => ({ ...g, eta: groupEta(g, byRoute) }))
     .sort((a, b) => (etaMin(a) - etaMin(b)) || cmpNum(a.routeNum, b.routeNum));
 
   const running = routeGroups.filter(g => g.eta).length;
@@ -887,9 +975,10 @@ const etaMin = g => g.eta ? g.eta.min : Infinity;
 // 카드 자체는 다시 만들지 않는다(아래 detail-slot에 펼쳐둔 패널이 붙어 있다).
 function routeCardHTML(g){
   const n = g.routeIds.length;
-  const sub = n > 1
+  const pass = passNote(g);
+  const sub = (pass ? pass + ' · ' : '') + (n > 1
     ? `${g.origins.size > 1 ? g.origins.size + '개 출발지 · ' : ''}${n}개 계통 운행`
-    : `${[...g.origins][0]} 출발`;
+    : `${[...g.origins][0]} 출발`);
   return `<div class="route-tag">${g.routeNum}</div>
       <div class="route-meta">
         <div class="route-nm">${dirName(g)} 방면</div>
@@ -934,20 +1023,25 @@ async function loadGroupTimeline(g){
   area.innerHTML = loadingBox('도착 가능한 정류장을 불러오는 중이에요');
   try{
     // 그룹에 속한 모든 계통의 경유 정류장을 병렬로 조회 (방면 라벨을 붙일 때 받아둔 것은 캐시에서)
-    const lists = await Promise.all(g.routeIds.map(async rid => ({ rid, list: await getRouteStations(rid) })));
-    // 각 계통에서 '출발지 이후' 정류장만 모아 병합 (거리 최소값, 운행 계통 집합 기록)
+    const lists = await Promise.all(g.legs.map(async leg => ({ leg, list: await getRouteStations(leg.rid) })));
+    // 각 탑승에서 '출발지 이후' 정류장만 모아 병합 (거리 최소값, 탑승 집합 기록)
+    // 순환 노선이 이 정류장에 다시 오면 거기서 끊는다 — 그 뒤는 다음 회차에 타는 편이 맞다
     const destMap = new Map();
-    for(const { rid, list } of lists){
-      const dep = list.find(s => s.STATION_ID == selectedStationId);
+    for(const { leg, list } of lists){
+      const dep = leg.ord == null
+        ? list.find(s => s.STATION_ID == selectedStationId)
+        : list.find(s => s.STATION_ORD == leg.ord);
       if(!dep) continue;
+      const again = list.find(s => s.STATION_ID == selectedStationId && s.STATION_ORD > dep.STATION_ORD);
       for(const s of list){
         if(s.STATION_ORD <= dep.STATION_ORD) continue;
+        if(again && s.STATION_ORD >= again.STATION_ORD) break;
         const dist = s.ROUTE_DIST - dep.ROUTE_DIST;
         const cur = destMap.get(s.STATION_ID);
         if(!cur){
-          destMap.set(s.STATION_ID, { id: s.STATION_ID, name: s.STATION_NM, dist, routeIds: new Set([rid]) });
+          destMap.set(s.STATION_ID, { id: s.STATION_ID, name: s.STATION_NM, dist, legs: new Set([leg.key]) });
         }else{
-          cur.routeIds.add(rid);
+          cur.legs.add(leg.key);
           if(dist < cur.dist) cur.dist = dist;
         }
       }
@@ -963,7 +1057,7 @@ function renderGroupTimeline(){
     area.innerHTML = `<div class="status-box">이 방향으로 갈 수 있는 정류장을 찾지 못했어요.</div>`;
     return;
   }
-  const totalRoutes = selectedGroup.routeIds.length;
+  const totalRoutes = selectedGroup.legs.length;
   const depRow = `
     <div class="tl-item dep">
       <div class="tl-rail"><span class="tl-dot"></span></div>
@@ -971,8 +1065,8 @@ function renderGroupTimeline(){
     </div>`;
   const destRows = groupDests.map(d => {
     // 일부 계통만 지나는 정류장은 배지로 표시
-    const partial = (totalRoutes > 1 && d.routeIds.size < totalRoutes)
-      ? `<span class="tl-badge">${d.routeIds.size}/${totalRoutes} 계통</span>` : '';
+    const partial = (totalRoutes > 1 && d.legs.size < totalRoutes)
+      ? `<span class="tl-badge">${d.legs.size}/${totalRoutes} 계통</span>` : '';
     return `
     <div class="tl-item future" data-sid="${d.id}" onclick="selectGroupDest(${d.id})">
       <div class="tl-rail"><span class="tl-dot"></span></div>
@@ -990,7 +1084,7 @@ function selectGroupDest(stationId){
   const d = groupDests.find(x => x.id == stationId);
   if(!d) return;
   selectedDest = { id: d.id, name: d.name, dist: d.dist };
-  selectedDestRouteIds = d.routeIds;   // 이 도착지를 실제로 지나는 계통 ROUTE_ID 집합
+  selectedDestLegs = d.legs;   // 이 도착지로 실제로 가는 탑승(legKey) 집합
   document.querySelectorAll('.tl-item').forEach(el => {
     el.classList.toggle('picked', el.dataset.sid == stationId);
   });
@@ -999,21 +1093,21 @@ function selectGroupDest(stationId){
 
 // 도착지를 고른 직후 한 번 — 이후 갱신은 정류장 폴러(refreshArrivals)가 맡는다
 async function loadArrivals(){
-  if(!selectedStation || !selectedGroup || !selectedDestRouteIds) return;
+  if(!selectedStation || !selectedGroup || !selectedDestLegs) return;
   document.getElementById('boardArea').innerHTML =
     loadingBox(`${selectedStation.name} 실시간 도착 정보를 불러오는 중이에요`);
-  const all = await fetchStationArrivals(selectedStation.id);
-  // 선택한 도착지를 실제로 지나는 계통만 필터 — 같은 번호라도 그 도착지를 안 가는 계통·반대 방향은 제외
-  renderBoard(all.filter(b => selectedDestRouteIds.has(b.ROUTE_ID)));
+  const all = assignLegs(await fetchStationArrivals(selectedStation.id), stationPasses);
+  // 선택한 도착지로 실제로 가는 탑승만 필터 — 같은 번호라도 그 도착지를 안 가는 계통·반대 방향·다른 회차는 제외
+  renderBoard(all.filter(b => selectedDestLegs.has(b._leg)));
 }
 
 function tripSummaryHTML(){
   const distText = selectedDest ? ` · ${formatDist(selectedDest.dist)} 이동` : '';
-  const routeCount = (selectedDestRouteIds && selectedGroup.routeIds.length > 1)
-    ? ` · ${selectedDestRouteIds.size}개 계통` : '';
+  const routeCount = (selectedDestLegs && selectedGroup.routeIds.length > 1)
+    ? ` · ${selectedDestLegs.size}개 계통` : '';
   return `<div class="trip-summary">
     <div class="trip-route">
-      <span class="route-tag">${selectedGroup.routeNum}</span>${dirName(selectedGroup)} 방면${distText}${routeCount}
+      <span class="route-tag">${selectedGroup.routeNum}</span>${dirName(selectedGroup)} 방면${passNote(selectedGroup) ? ` · ${passNote(selectedGroup)}` : ''}${distText}${routeCount}
     </div>
     <div class="trip-od">
       <span class="od-from">${selectedStation.name}</span>
@@ -1044,6 +1138,9 @@ function renderBoard(arrivals){
       </div>
       ${sorted.map(b => {
         const mins = b.PREDICT_TRAV_TM;
+        // 순환 노선은 ROUTE_SUB_NM이 늘 종점이라 그 차가 이번 회차에 실제로 가는 방면을 쓴다
+        const g = routeGroups.find(x => x.legs.some(l => l.key === b._leg));
+        const way = g && g.passNo != null ? dirName(g) : b.ROUTE_SUB_NM;
         const etaText = mins <= 1 ? '곧 도착' : `${mins}<span>분</span>`;
         return `
         <div class="bus-row">
@@ -1051,7 +1148,7 @@ function renderBoard(arrivals){
             <div class="bus-id">
               <div class="route-tag">${b.ROUTE_NUM}</div>
               <div>
-                <div class="bus-no">${b.ROUTE_SUB_NM} 방면</div>
+                <div class="bus-no">${way} 방면</div>
                 <div class="bus-dest">${b.CURR_STATION_NM} 통과</div>
               </div>
             </div>
@@ -1377,13 +1474,22 @@ function switchFilterTab(tab){
 }
 
 // 노선 목록을 번호+방면으로 묶기 (메인 화면 그룹화 규칙과 동일)
+// 번호+방향으로 묶는다. 출발 정류장을 두 번 지나는 계통은 회차(뒤에서 몇 번째 통과인지)까지 키에 넣어
+// 첫 통과와 마지막 통과가 서로 다른 그룹이 되게 한다 — 출발점이 달라도 마지막 통과끼리는 같은 길을 간다.
 function groupRoutes(rows){
   const map = new Map();
   rows.forEach(r => {
-    const key = r.ROUTE_NUM + '|' + r.DST_NM;
-    if(!map.has(key)) map.set(key, { routeNum: r.ROUTE_NUM, dstNm: r.DST_NM, routeIds: [], origins: new Set(), stops: null, dist: null });
+    const key = r.ROUTE_NUM + '|' + r.DST_NM + (r._passLeft != null ? '|' + r._passLeft : '');
+    if(!map.has(key)){
+      const g = { key, routeNum: r.ROUTE_NUM, dstNm: r.DST_NM, routeIds: [], legs: [], origins: new Set(), stops: null, dist: null };
+      if(r._passLeft != null){ g.passNo = r._passNo; g.passLeft = r._passLeft; if(r._dir) g.dirNm = r._dir; }
+      map.set(key, g);
+    }
     const g = map.get(key);
-    if(!g.routeIds.includes(r.ROUTE_ID)) g.routeIds.push(r.ROUTE_ID);
+    if(!g.routeIds.includes(r.ROUTE_ID)){
+      g.routeIds.push(r.ROUTE_ID);
+      g.legs.push({ rid: r.ROUTE_ID, ord: r._ord == null ? null : r._ord, key: legKey(r.ROUTE_ID, r._ord) });
+    }
     g.origins.add(r.ORGT_NM);
     if(r._stops != null && (g.stops == null || r._stops < g.stops)){ g.stops = r._stops; g.dist = r._dist; }
   });
@@ -1443,12 +1549,25 @@ async function computeDirectBetween(depId, destId){
 
   const checked = await Promise.all(cands.map(async r => {
     const list = await getRouteStations(r.ROUTE_ID);
-    const a = list.find(s => s.STATION_ID == depId);
-    const b = list.find(s => s.STATION_ID == destId);
-    if(!a || !b) return null;
+    // 순환 노선은 출발·도착이 두 번씩 나올 수 있다 — 가장 적게 타는 (출발 통과, 도착) 쌍을 고른다
+    const deps = list.filter(s => s.STATION_ID == depId);
+    const dests = list.filter(s => s.STATION_ID == destId);
+    let a = null, b = null;
+    deps.forEach(x => dests.forEach(y => {
+      const d = Number(y.STATION_ORD) - Number(x.STATION_ORD);
+      if(d > 0 && (!a || d < Number(b.STATION_ORD) - Number(a.STATION_ORD))){ a = x; b = y; }
+    }));
+    if(!a) return null;   // 반대 방향 계통 제외
     const ordA = Number(a.STATION_ORD), ordB = Number(b.STATION_ORD);
-    if(!(ordB > ordA)) return null;   // 반대 방향 계통 제외
-    return { ...r, _stops: ordB - ordA, _dist: Number(b.ROUTE_DIST) - Number(a.ROUTE_DIST) };
+    const row = { ...r, _stops: ordB - ordA, _dist: Number(b.ROUTE_DIST) - Number(a.ROUTE_DIST) };
+    if(deps.length > 1){
+      // 메인 목록과 같은 회차 그룹이 되도록 통과 정보를 붙인다
+      const ords = deps.map(s => Number(s.STATION_ORD));
+      const k = ords.indexOf(ordA);
+      Object.assign(row, { _ord: ordA, _passNo: k + 1, _passLeft: ords.length - 1 - k,
+        _dir: passDirName(list, ordA, ords[k + 1]) });
+    }
+    return row;
   }));
   return groupRoutes(checked.filter(Boolean));
 }
@@ -1496,7 +1615,7 @@ function useAlt(depId, destId){
 }
 
 // ── 선택한 노선을 메인 화면 흐름에 반영 ─────────────
-async function applyPlan(routeNum, dstNm){
+async function applyPlan(key){
   const dep = filter.dep, dest = filter.dest;
   if(!dep || !dest) return;
   closeFilter();
@@ -1504,7 +1623,10 @@ async function applyPlan(routeNum, dstNm){
   // 출발 정류장 펼치기 (이미 펼쳐져 있으면 그대로 둔다 — selectStation은 재클릭 시 접힘)
   if(selectedStationId !== dep.id) await selectStation(dep.id, dep.name);
 
-  const idx = routeGroups.findIndex(g => String(g.routeNum) === String(routeNum) && String(g.dstNm) === String(dstNm));
+  // 회차까지 같은 그룹 우선 — 메인 목록에서 회차가 안 갈렸으면 번호+방향으로 찾는다
+  const base = String(key).split('|').slice(0, 2).join('|');
+  let idx = routeGroups.findIndex(g => g.key === key);
+  if(idx < 0) idx = routeGroups.findIndex(g => g.key === base || g.key.startsWith(base + '|'));
   if(idx < 0) return;
   if(selectedGroup !== routeGroups[idx]) await selectGroup(idx);
 
@@ -1592,7 +1714,7 @@ function routeNums(groups){
 // 노선 카드의 onclick 문자열 (따옴표가 섞인 노선명도 안전하게)
 function planCall(g){
   const esc = v => String(v).replace(/&/g,'&amp;').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-  return `applyPlan('${esc(g.routeNum)}', '${esc(g.dstNm)}')`;
+  return `applyPlan('${esc(g.key)}')`;
 }
 
 // 출발·도착 조합 제안 목록 — '이렇게 하면 갈 수 있어요'와 '더 빠른 경로'가 같은 모양이다.
@@ -1647,7 +1769,7 @@ function renderDirectTab(){
         <div class="route-tag">${g.routeNum}</div>
         <div class="pick-main">
           <div class="pick-nm">${dirName(g)} 방면${g.routeIds.length > 1 ? `<span class="tl-badge">${g.routeIds.length}개 계통</span>` : ''}</div>
-          <div class="pick-sub">${g.stops}개 정류장 · ${formatDist(g.dist)}</div>
+          <div class="pick-sub">${passNote(g) ? passNote(g) + ' · ' : ''}${g.stops}개 정류장 · ${formatDist(g.dist)}</div>
         </div>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
       </div>`).join('')}</div>
@@ -1658,12 +1780,18 @@ function renderAllTab(){
   if(filter.all === null) return loadingBox('이 정류장을 지나는 버스를 불러오는 중이에요');
   if(!filter.all.length) return `<div class="status-box">이 정류장을 지나는 노선 정보를 찾지 못했어요.</div>`;
   // 직통 탭을 이미 조회했다면 어떤 노선이 내 출발지에서 바로 가는지 배지로 표시
-  const directKeys = new Set((filter.direct || []).map(g => g.routeNum + '|' + g.dstNm));
+  // 순환 노선은 직통 쪽이 회차별로 갈려 있을 수 있다 — 정거장이 가장 적은 회차로 연결
+  const directBy = new Map();
+  (filter.direct || []).forEach(d => {
+    const k = d.routeNum + '|' + d.dstNm, cur = directBy.get(k);
+    if(!cur || d.stops < cur.stops) directBy.set(k, d);
+  });
   return `<div class="pick-label">${filter.dest.name} 경유 노선</div>
     <div class="pick-list">${filter.all.map(g => {
-      const isDirect = directKeys.has(g.routeNum + '|' + g.dstNm);
+      const direct = directBy.get(g.routeNum + '|' + g.dstNm);
+      const isDirect = !!direct;
       const attrs = isDirect
-        ? `class="plan-item go" onclick="${planCall(g)}"`
+        ? `class="plan-item go" onclick="${planCall(direct)}"`
         : `class="plan-item"`;
       return `
       <div ${attrs}>
