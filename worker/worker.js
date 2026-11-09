@@ -16,6 +16,8 @@
 //  /kakao/{keyword|address}?query=…   → dapi.kakao.com   (장소 검색)
 //  /tago/{op}?…                       → apis.data.go.kr  (전국 버스정보, 아래 TAGO_OPS만 허용)
 //  /jejudata/…                        → open.jejudatahub.net
+//  /schedule/list?keyword=434         → bus.jeju.go.kr 시간표 검색(HTML)을 JSON으로 정리
+//  /schedule/table?id=1916            → bus.jeju.go.kr 시간표 표 + 안내문(평일만 운행 등)
 //  /*.do?…                            → bus.jeju.go.kr/api  (제주 BIS, 기본 경로)
 
 // 전국 확장용 TAGO 오퍼레이션 화이트리스트.
@@ -54,6 +56,13 @@ export default {
         status: kres.status,
         headers: { "content-type": "application/json;charset=UTF-8", ...corsHeaders() }
       });
+    }
+
+    // 버스 시간표 (막차 표시용) — 실시간 API(/api/*.do)에는 시간표가 없고 웹사이트 화면에만 있다.
+    // 화면용 HTML/POST라 앱이 직접 다루기 번거로워 여기서 JSON으로 정리해 내린다.
+    // 시간표는 개편 때만 바뀌므로 6시간 캐시한다(상류 부하·응답 속도 모두 이득).
+    if (url.pathname.startsWith("/schedule/")) {
+      return cached(request, 21600, () => schedule(url));
     }
 
     // 국토부 TAGO (전국 버스정보) — serviceKey를 여기서 붙인다
@@ -98,6 +107,85 @@ export default {
     });
   }
 };
+
+const BIS = "https://bus.jeju.go.kr";
+const FORM = { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "Referer": BIS + "/" };
+
+async function schedule(url) {
+  const op = url.pathname.slice("/schedule/".length);
+
+  // 노선번호 → 시간표 목록. 같은 번호에 방향별(또는 임시운행) 표가 여럿일 수 있다.
+  //  [{ id: 1916, num: "434", title: "434 순환(한라도서관-오등동-중앙로-한라도서관)" }, …]
+  if (op === "list") {
+    const keyword = url.searchParams.get("keyword") || "";
+    if (!/^[0-9-]{1,9}$/.test(keyword)) return notFound();
+    const res = await fetch(`${BIS}/mobile/schedule/listSchedule`, {
+      method: "POST", headers: FORM, body: "keyword=" + encodeURIComponent(keyword)
+    });
+    const html = await res.text();
+    const items = [];
+    const re = /scheduleId=(\d+)"[\s\S]*?class="span_one">([^<]*)<[\s\S]*?class="text_dest">([^<]*)</g;
+    for (let m; (m = re.exec(html));) {
+      items.push({ id: Number(m[1]), num: text(m[2]).replace(/번$/, ""), title: text(m[3]) });
+    }
+    return json(items, res.ok ? 200 : 502);
+  }
+
+  // 시간표 표 + 안내문
+  //  { id, via: "…※ 평일만 운행, 토,일,공휴일 운행하지 않음", since: "2024.8.12.", rows: [[머리행], [시각…], …] }
+  //  rows[0]은 정류장 이름(첫 칸은 빈 칸), 이후 행은 운행 회차별 시각 — 'X'(미정차)·'중앙마을 회차'·'5:50 (출발)'·비고도 섞여 온다
+  if (op === "table") {
+    const id = url.searchParams.get("id") || "";
+    if (!/^\d{1,6}$/.test(id)) return notFound();
+    const [tres, dres] = await Promise.all([
+      fetch(`${BIS}/data/schedule/getScheduleTableInfo`, { method: "POST", headers: FORM, body: "scheduleId=" + id }),
+      fetch(`${BIS}/mobile/schedule/detailSchedule?scheduleId=${id}`, { headers: { "Referer": BIS + "/" } })
+    ]);
+    if (!tres.ok) return json({ error: "upstream" }, 502);
+    const cells = await tres.json();
+    const html = dres.ok ? await dres.text() : "";
+    const rows = [];
+    (cells || []).forEach(c => {
+      (rows[c.ROW_SEQ] = rows[c.ROW_SEQ] || [])[c.COLUMN_SEQ] = text(c.COLUMN_NM || "");
+    });
+    const via = (html.match(/class="rotue-via[^"]*"[^>]*>([\s\S]*?)<\/td>/) || [])[1] || "";
+    const since = (html.match(/시행일\s*:\s*([^)<]*)/) || [])[1] || "";
+    return json({
+      id: Number(id), via: text(via), since: since.trim(),
+      rows: rows.filter(Boolean).map(r => Array.from(r, v => v || ""))
+    });
+  }
+  return notFound();
+}
+
+// HTML 조각 → 한 줄 텍스트 (<br>은 공백으로)
+function text(s) {
+  return String(s).replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json;charset=UTF-8", ...corsHeaders() }
+  });
+}
+
+// 성공 응답만 Cloudflare 엣지 캐시에 담는다
+async function cached(request, ttl, make) {
+  const cache = caches.default;
+  const key = new Request(request.url, { method: "GET" });
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  const res = await make();
+  if (res.status === 200) {
+    const copy = new Response(res.body, res);
+    copy.headers.set("Cache-Control", `public, max-age=${ttl}`);
+    await cache.put(key, copy.clone());
+    return copy;
+  }
+  return res;
+}
 
 function notFound() {
   return new Response('{"error":"unsupported"}', { status: 404, headers: corsHeaders() });
